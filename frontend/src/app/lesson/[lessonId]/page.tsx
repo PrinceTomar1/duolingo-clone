@@ -1,6 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
+import { use } from "react";
 
 import { LessonPlayer } from "@/components/lesson/LessonPlayer";
 import { useSessionStore } from "@/store/useSessionStore";
@@ -12,11 +13,14 @@ import { useSessionStore } from "@/store/useSessionStore";
  * link still works, but falls back to the bootstrapped session so the route is
  * reachable directly.
  */
-export default function LessonPage({ params }: { params: { lessonId: string } }) {
+export default function LessonPage({ params }: { params: Promise<{ lessonId: string }> }) {
+  // Next 15 hands route params to a page as a promise; `use` unwraps it in this
+  // client component without turning the page into a server component.
+  const { lessonId: lessonParam } = use(params);
   const searchParams = useSearchParams();
   const sessionUser = useSessionStore((state) => state.user);
 
-  const lessonId = Number(params.lessonId);
+  const lessonId = Number(lessonParam);
   const queryUserId = Number(searchParams.get("userId"));
   const userId = Number.isFinite(queryUserId) && queryUserId > 0 ? queryUserId : sessionUser?.id;
 

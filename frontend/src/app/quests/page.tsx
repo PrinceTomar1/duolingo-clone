@@ -8,10 +8,12 @@ import { useSessionStore } from "@/store/useSessionStore";
 /**
  * Quests.
  *
- * Only the daily-XP quest is real -- it reads today's row from the ledger, the
- * same source the right rail's ring uses. The weekly quests below it are shown
- * as locked rather than faked, because inventing progress the backend does not
- * track would be a lie in the UI.
+ * Every quest here is driven by persisted state. The daily quest reads today's
+ * row from the ledger -- the same source the right rail's ring uses -- and the
+ * two weekly quests read `weekly_xp` (summed from the last seven ledger days)
+ * and the streak. Nothing on this screen invents progress the backend does not
+ * track; a quest the API could not answer would be shown as unavailable rather
+ * than faked.
  */
 export default function QuestsPage() {
   const stats = useSessionStore((state) => state.stats);

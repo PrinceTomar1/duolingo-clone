@@ -69,9 +69,24 @@ docker compose up --build       # frontend :3000, backend :8000, seeded on boot
 ### Tests
 
 ```bash
-cd backend && python -m pytest -q      # 118 tests
+cd backend  && python -m pytest -q                  # 129 tests, no network or clock needed
 cd frontend && npm run typecheck && npm run lint
 ```
+
+**End-to-end (Playwright).** These drive the real UI against a real backend --
+nothing is stubbed, because the behaviour worth protecting (a heart is spent, a
+locked skill refuses to open, a dropped connection is reported) is decided by the
+server. Needs both processes up, the backend with `DEBUG=true`:
+
+```bash
+cd frontend
+npx playwright install chromium   # first run only
+npm run test:e2e                  # 10 specs
+```
+
+The suite spends hearts deliberately, so it tops the learner back up between
+specs by advancing the app's own simulated clock -- the same mechanism heart
+regeneration uses -- rather than writing to the database behind the app's back.
 
 ---
 
@@ -83,6 +98,36 @@ cd frontend && npm run typecheck && npm run lint
 | backend | `DATABASE_URL` | `sqlite:///./duolingo.db` | Any SQLAlchemy URL; Postgres works unchanged. |
 | backend | `CORS_ORIGINS` | `http://localhost:3000,...` | Comma-separated browser origins. |
 | frontend | `NEXT_PUBLIC_API_URL` | `http://127.0.0.1:8000` | Backend base URL. **No localhost is hardcoded in the source.** |
+
+---
+
+## Repository layout
+
+```
+backend/
+  app/
+    core/        config, engine/session, and the simulated clock
+    models/      SQLAlchemy tables (the schema below)
+    schemas/     Pydantic request/response shapes -- the API contract
+    routers/     thin HTTP adapters; no business rules live here
+    services/    the rules: grading, hearts/XP/streaks, path unlocking
+    seed/        course content + the idempotent seeder
+  alembic/       migrations
+  tests/         129 tests, in-memory SQLite
+
+frontend/
+  src/
+    app/         App Router routes (path, lesson, profile, leaderboard, ...)
+    components/  exercises/, lesson/, path/, layout/, ui/, stats/, profile/
+    store/       Zustand stores (session, lesson run, toasts, theme)
+    lib/         the API client, answer building, formatting, icons
+    types/       the API types the client and server agree on
+  e2e/           Playwright specs driven against a real backend
+```
+
+Two rules keep this honest: **routers contain no rules** (they call services and
+serialise the result), and **`lib/api.ts` is the only module that touches the
+network**, so the base URL, error shape and failure translation are decided once.
 
 ---
 
@@ -414,8 +459,11 @@ Things I decided rather than asked about, and what I traded away.
     which keeps `exercises_answered` and the accuracy figure exact.
 
 11. **Explicitly mocked, and labelled as such in the UI:** the guidebook button,
-    streak freeze and unlimited hearts in the shop, and the weekly quests. Each
-    says it is not part of the build rather than pretending to work.
+    and streak freeze / unlimited hearts in the shop. Each says it is not part of
+    the build rather than pretending to work. Everything else on screen is real:
+    the quests page, including the two weekly quests, reads `weekly_xp` (summed
+    from the last seven ledger days) and the streak, so no progress bar on this
+    build is decorative.
 
 ---
 
@@ -427,3 +475,23 @@ leaderboard is the first thing that breaks at scale (a full table scan of
 `daily_xp` per request) and would move to a periodically-materialised league
 table; `user_stats` is the only hot row per learner, and every write to it is
 idempotent enough to sit behind a queue.
+
+---
+
+## Original work
+
+Every line here is written for this assignment. The domain model, the derived
+skill-state rule, the ledger-backed streak, the lazy heart regeneration, the
+grader dispatch and the entire component tree are original; no Duolingo clone
+repository was copied or adapted, and no Duolingo source code or proprietary
+asset is included.
+
+The visual language deliberately *evokes* Duolingo -- the winding path, the
+rounded tiles with their 4px bottom border, the green/red feedback bar, the
+crowned nodes -- because the brief asks for that experience. It is reproduced
+from observation, in original CSS and original SVG paths (`lib/icon-paths.ts`).
+The wordmark is not a logo file: it is the word set as text in Nunito, which
+`next/font` self-hosts from Google Fonts under the SIL Open Font License.
+
+This is a learning exercise, not a product. "Duolingo" is a trademark of
+Duolingo, Inc., which has no association with this project.

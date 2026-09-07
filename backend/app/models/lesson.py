@@ -64,7 +64,8 @@ class Exercise(Base):
     )
     prompt: Mapped[str] = mapped_column(String(255), nullable=False)
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
-    # Never serialised to the client -- see schemas/exercise.py.
+    # Never serialised to the client -- ExerciseRead in schemas/lesson.py has no
+    # such field, so the omission is structural rather than remembered.
     correct_answer: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     # Optional TTS/audio clip; nullable because most seeded exercises are text.
     audio_url: Mapped[str | None] = mapped_column(String(255), nullable=True)

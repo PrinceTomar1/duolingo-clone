@@ -22,14 +22,23 @@ import type {
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
-/** An error carrying the backend's status code so callers can branch on it. */
+/**
+ * An error carrying the backend's status code and error *type*.
+ *
+ * `code` mirrors the `error` field the API sends with every domain failure
+ * ("OutOfHeartsError", "SkillLockedError", ...). Callers branch on it instead of
+ * matching message text, so a reworded message never silently changes which
+ * screen a learner is shown.
+ */
 export class ApiError extends Error {
   readonly status: number;
+  readonly code: string | null;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code: string | null = null) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -38,6 +47,44 @@ interface RequestOptions {
   body?: unknown;
   /** Path screens must not serve a cached path after a lesson changes it. */
   cache?: RequestCache;
+}
+
+/** One entry of FastAPI's 422 body: which field failed, and why. */
+interface ValidationIssue {
+  loc?: (string | number)[];
+  msg?: string;
+}
+
+/**
+ * Turn any error body into one line a human can read.
+ *
+ * The API answers with `detail` in two different shapes. Our own domain errors
+ * send a string ("Finish the previous skill..."), but FastAPI's request
+ * validation sends an *array* of per-field objects. Reading `.detail` blindly
+ * put that array into an Error, which rendered to the learner as
+ * "[object Object]" -- so each shape is handled explicitly here.
+ */
+function errorMessage(payload: unknown, status: number): string {
+  const fallback = `Request failed (${status})`;
+  if (typeof payload !== "object" || payload === null) return fallback;
+
+  const detail = (payload as { detail?: unknown }).detail;
+  if (typeof detail === "string" && detail.trim() !== "") return detail;
+
+  if (Array.isArray(detail)) {
+    const issues = (detail as ValidationIssue[])
+      .map((issue) => {
+        // `loc` is like ["body", "user_id"]; the last hop names the field, and
+        // the first is only the request part it came from.
+        const field = issue.loc?.slice(1).join(".") ?? "";
+        const reason = issue.msg ?? "is invalid";
+        return field ? `${field}: ${reason}` : reason;
+      })
+      .filter(Boolean);
+    if (issues.length > 0) return issues.join("; ");
+  }
+
+  return fallback;
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -59,13 +106,12 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   }
 
   if (!response.ok) {
-    // FastAPI returns `{detail}` for both our domain errors and validation
-    // failures, so one shape covers every failure path.
-    const detail = await response
-      .json()
-      .then((payload: { detail?: string }) => payload.detail)
-      .catch(() => undefined);
-    throw new ApiError(response.status, detail ?? `Request failed (${response.status})`);
+    const payload = await response.json().catch(() => undefined);
+    const code =
+      typeof payload === "object" && payload !== null && typeof (payload as { error?: unknown }).error === "string"
+        ? ((payload as { error: string }).error)
+        : null;
+    throw new ApiError(response.status, errorMessage(payload, response.status), code);
   }
 
   return (await response.json()) as T;

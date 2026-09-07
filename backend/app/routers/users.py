@@ -39,6 +39,7 @@ def _stats_payload(db: Session, stats: UserStats) -> UserStatsRead:
         max_hearts=settings.max_hearts,
         seconds_until_next_heart=gamification_service.seconds_until_next_heart(stats),
         gems=stats.gems,
+        heart_refill_gem_cost=settings.heart_refill_gem_cost,
         daily_goal_xp=stats.daily_goal_xp,
         daily_xp_earned=gamification_service.xp_earned_on(db, stats.user_id, today),
         weekly_xp=gamification_service.xp_earned_since(

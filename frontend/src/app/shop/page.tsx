@@ -10,9 +10,6 @@ import { ApiError, api } from "@/lib/api";
 import { formatCountdown, formatNumber } from "@/lib/format";
 import { useSessionStore } from "@/store/useSessionStore";
 
-/** The gem cost of a heart refill. Mirrors the backend's setting. */
-const REFILL_COST = 350;
-
 /**
  * The gem shop.
  *
@@ -44,7 +41,8 @@ export default function ShopPage() {
   if (!stats) return <p className="py-10 text-center font-extrabold text-wolf">Loading…</p>;
 
   const isFull = stats.hearts >= stats.max_hearts;
-  const canAfford = stats.gems >= REFILL_COST;
+  const refillCost = stats.heart_refill_gem_cost;
+  const canAfford = stats.gems >= refillCost;
 
   return (
     <>
@@ -82,7 +80,7 @@ export default function ShopPage() {
           disabled={isFull || !canAfford || isBusy}
           onClick={() => void refill()}
         >
-          {isFull ? "Hearts are full" : `${formatNumber(REFILL_COST)} gems`}
+          {isFull ? "Hearts are full" : `${formatNumber(refillCost)} gems`}
         </Button>
 
         {message && <p className="mt-3 text-center text-sm font-bold text-wolf">{message}</p>}

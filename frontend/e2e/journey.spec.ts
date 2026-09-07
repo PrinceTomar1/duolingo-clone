@@ -13,7 +13,7 @@
 
 import { expect, test } from "@playwright/test";
 
-import { DEMO_USER_ID, ensureHearts, firstLessonOf, skills, stats } from "./api";
+import { DEMO_USER_ID, drainHearts, ensureHearts, firstLessonOf, skills, stats } from "./api";
 
 // Several specs deliberately answer wrongly, so the learner would otherwise run
 // out of hearts partway through the run and later specs would fail on ordering.
@@ -152,4 +152,84 @@ test.describe("responsive", () => {
       expect(overflows).toBe(false);
     });
   }
+});
+
+test.describe("server-owned numbers reach the UI", () => {
+  test("the shop quotes the price the server charges", async ({ page }) => {
+    const learner = await stats(DEMO_USER_ID);
+    await page.goto("/shop");
+    // Hardcoding this in the client once meant the shop could advertise 350
+    // while the server charged something else, and gate the button on the
+    // wrong figure too.
+    await expect(page.locator("body")).toContainText(
+      String(learner.heart_refill_gem_cost.toLocaleString("en-US")),
+    );
+  });
+
+  test("the lesson draws one heart per heart the server allows", async ({ page }) => {
+    const learner = await stats(DEMO_USER_ID);
+    const open = (await skills(DEMO_USER_ID)).find((node) => node.state !== "locked")!;
+    await page.goto(`/lesson/${await firstLessonOf(open.id)}`);
+    await expect(page.getByTestId("option").first()).toBeVisible();
+
+    const hearts = await page.locator("header svg, header [aria-hidden]").count();
+    expect(hearts).toBeGreaterThanOrEqual(learner.max_hearts);
+  });
+});
+
+test.describe("an empty heart bar", () => {
+  test("offers a way out instead of a dead end", async ({ page }) => {
+    const open = (await skills(DEMO_USER_ID)).find((node) => node.state !== "locked")!;
+    const lessonId = await firstLessonOf(open.id);
+    await drainHearts(DEMO_USER_ID, lessonId);
+    const empty = await stats(DEMO_USER_ID);
+    expect(empty.hearts).toBe(0);
+
+    // Arriving with no hearts used to land on the generic error notice, whose
+    // only control was "Back to the path" -- no heart count, no refill, no
+    // countdown. It should be the same screen running dry mid-lesson gives.
+    await page.goto(`/lesson/${lessonId}`);
+    await expect(page.getByRole("button", { name: /refill/i })).toBeVisible();
+    await expect(page.locator("body")).toContainText(
+      String(empty.heart_refill_gem_cost.toLocaleString("en-US")),
+    );
+  });
+});
+
+test.describe("error bodies are made readable", () => {
+  test("a validation error never reaches the learner as an object", async ({ page }) => {
+    await ensureHearts();
+    const open = (await skills(DEMO_USER_ID)).find((node) => node.state !== "locked")!;
+    await page.goto(`/lesson/${await firstLessonOf(open.id)}`);
+    await page.getByTestId("option").first().click();
+
+    // FastAPI sends 422 with `detail` as an array of per-field objects; reading
+    // it blindly rendered "[object Object]".
+    await page.route("**/api/v1/attempts/**/answer", (route) =>
+      route.fulfill({
+        status: 422,
+        contentType: "application/json",
+        body: JSON.stringify({
+          detail: [{ type: "int_parsing", loc: ["body", "exercise_id"], msg: "Input should be a valid integer" }],
+        }),
+      }),
+    );
+    await page.getByRole("button", { name: "Check", exact: true }).click();
+
+    const banner = page.getByRole("alert").first();
+    await expect(banner).toBeVisible();
+    await expect(banner).not.toContainText("[object Object]");
+    await expect(banner).toContainText(/exercise_id/);
+  });
+});
+
+test.describe("features that are out of scope", () => {
+  test("the guidebook button is inert, not just decorative", async ({ page }) => {
+    await page.goto("/");
+    const guidebook = page.getByRole("button", { name: /guidebook/i }).first();
+    await expect(guidebook).toBeVisible();
+    // A live-looking control that swallows taps is worse than an honest one.
+    await expect(guidebook).toBeDisabled();
+    await expect(guidebook).toHaveAccessibleName(/not part of this build/i);
+  });
 });

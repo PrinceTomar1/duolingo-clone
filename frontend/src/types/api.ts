@@ -165,6 +165,8 @@ export interface UserStats {
   max_hearts: number;
   seconds_until_next_heart: number | null;
   gems: number;
+  /** Server-owned price of a refill. Never hardcode this in the UI. */
+  heart_refill_gem_cost: number;
   daily_goal_xp: number;
   daily_xp_earned: number;
   weekly_xp: number;

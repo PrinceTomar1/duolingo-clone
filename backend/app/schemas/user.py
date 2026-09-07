@@ -31,6 +31,9 @@ class UserStatsRead(BaseModel):
         default=None, description="None when the heart bar is already full"
     )
     gems: int
+    # Sent so the UI never has to hardcode the price. It is a server rule, and a
+    # copy in the client can advertise a cost the server does not charge.
+    heart_refill_gem_cost: int
     daily_goal_xp: int
     daily_xp_earned: int
     weekly_xp: int

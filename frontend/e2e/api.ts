@@ -17,10 +17,12 @@ const API = process.env.E2E_API_URL ?? "http://127.0.0.1:8000";
 export interface Stats {
   total_xp: number;
   hearts: number;
+  max_hearts: number;
   current_streak: number;
   daily_xp_earned: number;
   daily_goal_xp: number;
   gems: number;
+  heart_refill_gem_cost: number;
 }
 
 export async function get<T>(path: string): Promise<T> {
@@ -52,6 +54,28 @@ export async function firstLessonOf(skillId: number): Promise<number> {
 
 /** The demo learner the app bootstraps to. */
 export const DEMO_USER_ID = 1;
+
+export async function drainHearts(userId: number, lessonId: number): Promise<void> {
+  // Spend every heart by answering the same exercise wrongly. Done over the API
+  // because the point of the spec is what the *UI* does once the bar is empty.
+  for (let guard = 0; guard < 12; guard += 1) {
+    const current = await stats(userId);
+    if (current.hearts <= 0) return;
+    const started = await fetch(`${API}/api/v1/lessons/${lessonId}/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: userId }),
+    });
+    if (!started.ok) return;
+    const { attempt_id: attemptId } = (await started.json()) as { attempt_id: number };
+    const lesson = await get<{ exercises: { id: number }[] }>(`/lessons/${lessonId}`);
+    await fetch(`${API}/api/v1/attempts/${attemptId}/answer`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ exercise_id: lesson.exercises[0]!.id, answer: { choice: "__wrong__" } }),
+    });
+  }
+}
 
 async function post<T>(path: string, body: unknown): Promise<T> {
   const response = await fetch(`${API}/api/v1${path}`, {

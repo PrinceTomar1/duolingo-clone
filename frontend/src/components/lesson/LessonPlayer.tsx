@@ -14,9 +14,6 @@ import { Button } from "@/components/ui/Button";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { useSessionStore } from "@/store/useSessionStore";
 
-/** Gems a heart refill costs. Mirrors the backend's `heart_refill_gem_cost`. */
-const REFILL_COST = 350;
-
 /**
  * The full-screen lesson takeover.
  *
@@ -50,6 +47,24 @@ export function LessonPlayer({ lessonId, userId }: { lessonId: number; userId: n
 
   if (store.status === "complete" && store.summary) {
     return <CompletionScreen summary={store.summary} onContinue={() => router.push("/")} />;
+  }
+
+  // Refused at the door for want of hearts: there is no lesson to draw behind
+  // the modal, so it is shown on its own rather than falling through to the
+  // loading state below and hanging there.
+  if (store.status === "failed" && !store.lesson) {
+    return (
+      <div className="min-h-screen bg-snow dark:bg-night">
+        <OutOfHeartsModal
+          gems={stats?.gems ?? 0}
+          refillCost={stats?.heart_refill_gem_cost ?? 0}
+          secondsUntilNextHeart={stats?.seconds_until_next_heart ?? null}
+          isRefilling={runner.isBusy}
+          onRefill={() => void runner.refill()}
+          onQuit={() => router.push("/")}
+        />
+      </div>
+    );
   }
 
   if (!store.lesson || !exercise) {
@@ -125,7 +140,7 @@ export function LessonPlayer({ lessonId, userId }: { lessonId: number; userId: n
       {store.status === "failed" && (
         <OutOfHeartsModal
           gems={stats?.gems ?? 0}
-          refillCost={REFILL_COST}
+          refillCost={stats?.heart_refill_gem_cost ?? 0}
           secondsUntilNextHeart={stats?.seconds_until_next_heart ?? null}
           isRefilling={runner.isBusy}
           onRefill={() => void runner.refill()}

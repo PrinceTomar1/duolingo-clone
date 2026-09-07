@@ -8,6 +8,7 @@ attempts, ledger, achievements -- are rebuilt from scratch. Running the script
 twice leaves the database in exactly the state running it once does.
 """
 
+import sys
 from datetime import date, timedelta
 
 from sqlalchemy import delete, select
@@ -305,9 +306,27 @@ def seed(db: Session) -> None:
     db.commit()
 
 
+def is_seeded(db: Session) -> bool:
+    """True when a course already exists, i.e. this database has been seeded."""
+    return db.scalar(select(Course.id)) is not None
+
+
 def main() -> None:
-    """Entry point for ``python -m app.seed.seed_data``."""
+    """Entry point for ``python -m app.seed.seed_data``.
+
+    ``--if-empty`` seeds only a database that has no course yet. Deployed
+    environments use it in their start command: a free-tier host restarts the
+    process whenever it wakes from idle, and an unconditional seed would reset
+    every learner's progress on each cold start. Locally the default (no flag)
+    still converges the demo learners back to a known state, which is what makes
+    re-running it useful during development.
+    """
+    seed_only_if_empty = "--if-empty" in sys.argv
+
     with SessionLocal() as db:
+        if seed_only_if_empty and is_seeded(db):
+            print("Database already seeded; leaving learner progress untouched.")
+            return
         seed(db)
         course = db.scalar(select(Course))
         assert course is not None

@@ -260,3 +260,42 @@ class TestMatchPairCheck:
             json={"exercise_id": choice["id"], "left": "a", "right": "b"},
         )
         assert response.status_code == 409
+
+
+class TestSeedIdempotence:
+    """`--if-empty` is what keeps a free-tier cold start from wiping progress."""
+
+    def test_is_seeded_is_false_on_an_empty_database(self, db: Session) -> None:
+        from app.seed.seed_data import is_seeded
+
+        assert is_seeded(db) is False
+
+    def test_is_seeded_is_true_once_a_course_exists(self, db: Session, course: Course) -> None:
+        from app.seed.seed_data import is_seeded
+
+        assert is_seeded(db) is True
+
+    def test_reseeding_converges_rather_than_duplicating(self, db: Session) -> None:
+        """The default path is safe to re-run: content is upserted, not appended."""
+        from sqlalchemy import func
+
+        from app.models.lesson import Exercise
+        from app.seed.seed_data import seed
+
+        seed(db)
+        first = (
+            db.scalar(select(func.count(Unit.id))),
+            db.scalar(select(func.count(Skill.id))),
+            db.scalar(select(func.count(Lesson.id))),
+            db.scalar(select(func.count(Exercise.id))),
+            db.scalar(select(func.count(User.id))),
+        )
+        seed(db)
+        second = (
+            db.scalar(select(func.count(Unit.id))),
+            db.scalar(select(func.count(Skill.id))),
+            db.scalar(select(func.count(Lesson.id))),
+            db.scalar(select(func.count(Exercise.id))),
+            db.scalar(select(func.count(User.id))),
+        )
+        assert first == second

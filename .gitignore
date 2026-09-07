@@ -13,8 +13,13 @@ out/
 
 # Editors / OS
 .DS_Store
-.vscode/
 .idea/
+
+# Editor config is committed (interpreter path, search excludes) so the project
+# opens correctly for anyone reviewing it; personal VS Code state is not.
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
 
 # Next/TypeScript build metadata
 *.tsbuildinfo

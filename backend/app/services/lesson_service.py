@@ -19,6 +19,7 @@ from app.core import clock
 from app.core.config import settings
 from app.models.achievement import Achievement
 from app.models.course import Course, Skill, Unit
+from app.models.enums import ExerciseType
 from app.models.lesson import Exercise, Lesson
 from app.models.progress import LessonAttempt, UserProgress
 from app.models.stats import UserStats
@@ -175,6 +176,43 @@ def submit_answer(
         hearts_remaining=stats.hearts,
         attempt_failed=stats.hearts <= 0,
     )
+
+
+def check_pair(db: Session, attempt_id: int, exercise_id: int, left: str, right: str) -> bool:
+    """Verify one tile pairing without revealing the rest of the board.
+
+    Match-pairs is the one exercise whose interaction *requires* feedback mid-
+    answer: a board that only tells you at the end which of five links was wrong
+    is unplayable. Rather than shipping the mapping to the client, the client
+    asks about one link at a time -- exactly the single bit the game would show
+    anyway -- and the answer key stays here.
+
+    A mis-tap costs no heart. The heart cost for this exercise is applied by the
+    normal grading path when the finished board is submitted, and since a board
+    can only be finished by matching every pair, a learner who perseveres keeps
+    their hearts. That mirrors how the real game treats this exercise type.
+    """
+    attempt = _load_open_attempt(db, attempt_id)
+    exercise = db.get(Exercise, exercise_id)
+    _require(exercise, "Exercise")
+    if exercise.lesson_id != attempt.lesson_id:  # type: ignore[union-attr]
+        raise ConflictError("That exercise does not belong to this lesson.")
+    if exercise.type is not ExerciseType.MATCH_PAIRS:  # type: ignore[union-attr]
+        raise ConflictError("Only match-pairs exercises can be checked one pair at a time.")
+
+    return _single_pair_matches(exercise.correct_answer, left, right)  # type: ignore[union-attr]
+
+
+def _single_pair_matches(correct_answer: dict, left: str, right: str) -> bool:
+    """True when this one link appears in the stored mapping."""
+    pairs = correct_answer.get("pairs")
+    if not isinstance(pairs, dict):
+        return False
+    normalized = {
+        answer_grader.normalize(str(key)): answer_grader.normalize(str(value))
+        for key, value in pairs.items()
+    }
+    return normalized.get(answer_grader.normalize(left)) == answer_grader.normalize(right)
 
 
 def _award_crown(db: Session, user_id: int, lesson: Lesson) -> tuple[bool, UserProgress]:

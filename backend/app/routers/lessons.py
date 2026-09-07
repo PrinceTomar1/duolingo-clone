@@ -9,6 +9,8 @@ from app.schemas.lesson import (
     CompletionRead,
     ExerciseRead,
     LessonRead,
+    MatchPairRead,
+    MatchPairRequest,
     StartAttemptRead,
     StartAttemptRequest,
     SubmitAnswerRequest,
@@ -73,4 +75,17 @@ def complete_attempt(attempt_id: int, db: Session = Depends(get_db)) -> Completi
             if key != "unlocked_achievements"
         },
         unlocked_achievements=summary.unlocked_achievements,
+    )
+
+
+@router.post("/attempts/{attempt_id}/match-pair", response_model=MatchPairRead)
+def check_match_pair(
+    attempt_id: int, body: MatchPairRequest, db: Session = Depends(get_db)
+) -> MatchPairRead:
+    """Verify a single tile pairing so the board can flash green or red.
+
+    Costs no heart -- see ``lesson_service.check_pair`` for why.
+    """
+    return MatchPairRead(
+        is_correct=lesson_service.check_pair(db, attempt_id, body.exercise_id, body.left, body.right)
     )

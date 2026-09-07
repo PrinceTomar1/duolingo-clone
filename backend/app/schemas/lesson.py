@@ -102,3 +102,17 @@ class CompletionRead(BaseModel):
     hearts_remaining: int
     gems: int
     unlocked_achievements: list[UnlockedAchievementRead] = []
+
+
+class MatchPairRequest(BaseModel):
+    """One tile pairing to verify mid-board."""
+
+    exercise_id: int
+    left: str
+    right: str
+
+
+class MatchPairRead(BaseModel):
+    """Whether that one pairing is correct. Nothing else is revealed."""
+
+    is_correct: bool

@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    /* Duolingo's type is heavy and tightly rendered; without antialiasing the
+       800-weight Nunito looks muddy on macOS. */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-polar text-eel dark:bg-night dark:text-swan;
+    font-weight: 700;
+  }
+
+  /* Buttons and tiles are tapped repeatedly; the blue flash and the text
+     selection that come with that are pure noise. */
+  button,
+  [role="button"] {
+    @apply select-none;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@layer utilities {
+  /* The horizontal scroller on narrow screens should not show a bar. */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}

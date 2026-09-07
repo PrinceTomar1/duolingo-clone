@@ -197,3 +197,66 @@ class TestDevEndpoints:
         assert body["simulated_today"] != before.isoformat()
         assert body["offset_seconds"] == 3 * 24 * 3600
         client.post("/api/v1/dev/reset-clock")
+
+
+class TestMatchPairCheck:
+    """The per-pair check that lets the match board give live feedback."""
+
+    def _match_exercise(self, client: TestClient, lesson_id: int) -> dict:
+        lesson = client.get("/api/v1/lessons/{}".format(lesson_id)).json()
+        return next(item for item in lesson["exercises"] if item["type"] == "MATCH_PAIRS")
+
+    def test_correct_pair_is_confirmed_and_costs_no_heart(
+        self, client: TestClient, db: Session, course: Course, user: User
+    ) -> None:
+        from app.models.lesson import Exercise
+
+        lesson_id = first_lesson_id(db, course)
+        attempt_id = client.post(
+            "/api/v1/lessons/{}/start".format(lesson_id), json={"user_id": user.id}
+        ).json()["attempt_id"]
+        exercise = self._match_exercise(client, lesson_id)
+        key = db.get(Exercise, exercise["id"]).correct_answer["pairs"]
+        left, right = next(iter(key.items()))
+
+        response = client.post(
+            "/api/v1/attempts/{}/match-pair".format(attempt_id),
+            json={"exercise_id": exercise["id"], "left": left, "right": right},
+        )
+        assert response.json() == {"is_correct": True}
+        assert client.get("/api/v1/users/{}/stats".format(user.id)).json()["hearts"] == 5
+
+    def test_wrong_pair_is_rejected_without_revealing_the_answer(
+        self, client: TestClient, db: Session, course: Course, user: User
+    ) -> None:
+        lesson_id = first_lesson_id(db, course)
+        attempt_id = client.post(
+            "/api/v1/lessons/{}/start".format(lesson_id), json={"user_id": user.id}
+        ).json()["attempt_id"]
+        exercise = self._match_exercise(client, lesson_id)
+
+        response = client.post(
+            "/api/v1/attempts/{}/match-pair".format(attempt_id),
+            json={
+                "exercise_id": exercise["id"],
+                "left": exercise["payload"]["left"][0],
+                "right": "not a real translation",
+            },
+        )
+        assert response.json() == {"is_correct": False}
+        assert set(response.json()) == {"is_correct"}
+
+    def test_non_match_exercise_is_rejected(
+        self, client: TestClient, db: Session, course: Course, user: User
+    ) -> None:
+        lesson_id = first_lesson_id(db, course)
+        attempt_id = client.post(
+            "/api/v1/lessons/{}/start".format(lesson_id), json={"user_id": user.id}
+        ).json()["attempt_id"]
+        lesson = client.get("/api/v1/lessons/{}".format(lesson_id)).json()
+        choice = next(item for item in lesson["exercises"] if item["type"] == "MULTIPLE_CHOICE")
+        response = client.post(
+            "/api/v1/attempts/{}/match-pair".format(attempt_id),
+            json={"exercise_id": choice["id"], "left": "a", "right": "b"},
+        )
+        assert response.status_code == 409

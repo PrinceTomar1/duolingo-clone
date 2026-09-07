@@ -1,8 +1,8 @@
 /**
  * The only module in the app that talks to the network.
  *
- * Every call goes through `request`, so retries, error shape and the base URL
- * are decided once. The base URL comes from `NEXT_PUBLIC_API_URL` -- there is
+ * Every call goes through `request`, so the error shape and the base URL are
+ * decided once. The base URL comes from `NEXT_PUBLIC_API_URL` -- there is
  * no hardcoded localhost anywhere, which is what makes the Vercel build work
  * against a deployed backend without a code change.
  */
@@ -43,12 +43,20 @@ interface RequestOptions {
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = "GET", body, cache = "no-store" } = options;
 
-  const response = await fetch(`${BASE_URL}/api/v1${path}`, {
-    method,
-    cache,
-    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${BASE_URL}/api/v1${path}`, {
+      method,
+      cache,
+      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch {
+    // `fetch` rejects with a bare TypeError ("Failed to fetch") when the API is
+    // unreachable. Translated here so every caller can render `error.message`
+    // directly instead of showing the learner a browser internal.
+    throw new ApiError(0, "Can't reach the server. Check your connection and try again.");
+  }
 
   if (!response.ok) {
     // FastAPI returns `{detail}` for both our domain errors and validation

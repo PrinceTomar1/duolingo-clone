@@ -33,7 +33,12 @@ export function LessonPlayer({ lessonId, userId }: { lessonId: number; userId: n
   if (store.status === "error") {
     return (
       <div className="p-6">
-        <ErrorNotice message={store.errorMessage ?? "Something went wrong"} />
+        {/* A locked skill or a missing lesson is a refusal, not a misconfigured
+            API, so the setup hint is withheld for those. */}
+        <ErrorNotice
+          message={store.errorMessage ?? "Something went wrong"}
+          hint={store.errorStatus === 0 || store.errorStatus === null ? undefined : null}
+        />
         <div className="mx-auto mt-4 max-w-md">
           <Button variant="ghost" size="lg" fullWidth onClick={() => router.push("/")}>
             Back to the path
@@ -75,6 +80,21 @@ export function LessonPlayer({ lessonId, userId }: { lessonId: number; userId: n
           onPair={(left, right) => void runner.checkPair(left, right)}
         />
       </main>
+
+      {/* A failed request is reported here rather than as a toast: the lesson
+          route renders no ToastStack. The exercise stays on screen, so the
+          learner can simply press the button again. */}
+      {runner.actionError && (
+        <div
+          role="alert"
+          className="mx-auto mb-2 flex w-full max-w-2xl items-center gap-2 px-5 text-sm font-bold text-incorrect-text"
+        >
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-cardinal text-xs text-white">
+            !
+          </span>
+          <span className="min-w-0 flex-1">{runner.actionError}</span>
+        </div>
+      )}
 
       {store.result ? (
         <FeedbackBar

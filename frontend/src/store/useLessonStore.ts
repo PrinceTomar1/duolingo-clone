@@ -14,7 +14,7 @@
 
 import { create } from "zustand";
 
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import { playCorrect, playIncorrect } from "@/lib/sound";
 import type { AnswerResult, CompletionSummary, Lesson, SubmittedAnswer } from "@/types/api";
 
@@ -33,6 +33,8 @@ interface LessonState {
   status: LessonStatus;
   summary: CompletionSummary | null;
   errorMessage: string | null;
+  /** HTTP status behind `errorMessage`; 0 means the request never landed. */
+  errorStatus: number | null;
 
   load: (lessonId: number, userId: number) => Promise<void>;
   setDraft: (draft: SubmittedAnswer | null) => void;
@@ -53,6 +55,7 @@ const INITIAL = {
   status: "loading" as LessonStatus,
   summary: null,
   errorMessage: null,
+  errorStatus: null,
 };
 
 export const useLessonStore = create<LessonState>((set, get) => ({
@@ -75,6 +78,7 @@ export const useLessonStore = create<LessonState>((set, get) => ({
       set({
         status: "error",
         errorMessage: cause instanceof Error ? cause.message : "Could not start this lesson",
+        errorStatus: cause instanceof ApiError ? cause.status : null,
       });
     }
   },

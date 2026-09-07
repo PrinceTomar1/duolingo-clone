@@ -5,7 +5,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.models.course import Course
+from app.models.course import Course, Skill
+from app.models.user import User
 from app.schemas.course import CoursePathRead, SkillRead, UnitRead
 from app.services import path_service
 from app.services.exceptions import NotFoundError
@@ -23,6 +24,12 @@ def read_course_path(
     The router does no computing: it resolves the course, hands the work to
     ``path_service`` and reshapes the result into the response model.
     """
+    # An unknown learner used to come back 200 with every skill locked, which
+    # reads as "you have no progress" rather than "that user does not exist" --
+    # and disagrees with /users/{id}/stats, which 404s. Answer the same way here.
+    if db.get(User, user_id) is None:
+        raise NotFoundError("User not found")
+
     course = db.scalar(select(Course).order_by(Course.id))
     if course is None:
         raise NotFoundError("No course has been seeded yet.")
@@ -68,6 +75,11 @@ def read_skill_lesson_ids(skill_id: int, db: Session = Depends(get_db)) -> list[
     lesson when they tap a node, without downloading every lesson's exercises.
     """
     from app.models.lesson import Lesson
+
+    # An empty list is a meaningful answer for a real skill that has no lessons
+    # yet; for a skill id that does not exist it is a lie, so separate the two.
+    if db.get(Skill, skill_id) is None:
+        raise NotFoundError("Skill not found")
 
     return list(
         db.scalars(

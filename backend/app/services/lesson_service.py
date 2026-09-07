@@ -12,7 +12,7 @@ against state the browser cannot reach.
 from dataclasses import dataclass, field
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.core import clock
@@ -131,6 +131,33 @@ def start_attempt(db: Session, user_id: int, lesson_id: int) -> tuple[LessonAtte
     return attempt, stats.hearts
 
 
+def _claim_attempt(db: Session, attempt_id: int) -> LessonAttempt:
+    """Take exclusive ownership of an attempt so it can only be completed once.
+
+    A read-then-write guard (``if attempt.is_completed: raise``) is a race: two
+    concurrent requests both read False, both pass, and both return a summary
+    claiming the same award. This flips the flag with a conditional UPDATE
+    instead, so the database decides the winner -- whoever matches
+    ``is_completed = false`` first gets rowcount 1, and every other caller gets
+    0 and the same 409 a sequential retry would get.
+
+    Portable on purpose: SQLite serialises the writers, and Postgres blocks the
+    second UPDATE on the row lock until the first commits, after which the
+    predicate no longer matches. Neither needs an explicit lock statement.
+    """
+    attempt = db.get(LessonAttempt, attempt_id)
+    _require(attempt, "Attempt")
+
+    claimed = db.execute(
+        update(LessonAttempt)
+        .where(LessonAttempt.id == attempt_id, LessonAttempt.is_completed.is_(False))
+        .values(is_completed=True)
+    ).rowcount
+    if not claimed:
+        raise ConflictError("This attempt is already complete.")
+    return attempt  # type: ignore[return-value]
+
+
 def _load_open_attempt(db: Session, attempt_id: int) -> LessonAttempt:
     """Fetch an attempt and refuse to touch one that is already finished."""
     attempt = db.get(LessonAttempt, attempt_id)
@@ -215,18 +242,25 @@ def _single_pair_matches(correct_answer: dict, left: str, right: str) -> bool:
     return normalized.get(answer_grader.normalize(left)) == answer_grader.normalize(right)
 
 
-def _award_crown(db: Session, user_id: int, lesson: Lesson) -> tuple[bool, UserProgress]:
+def _award_crown(
+    db: Session, user_id: int, lesson: Lesson, current_attempt_id: int
+) -> tuple[bool, UserProgress]:
     """Grant a crown for the first completion of this specific lesson.
 
     Replaying a lesson is allowed and still pays XP, but crowns count *distinct*
     lessons finished, so a learner cannot farm a skill to gold by repeating its
     easiest lesson.
+
+    ``current_attempt_id`` is excluded from the lookback: the caller has already
+    claimed this attempt as complete, so without the exclusion every first
+    completion would find *itself* and quietly withhold the crown.
     """
     previously_done = db.scalar(
         select(LessonAttempt.id).where(
             LessonAttempt.user_id == user_id,
             LessonAttempt.lesson_id == lesson.id,
             LessonAttempt.is_completed.is_(True),
+            LessonAttempt.id != current_attempt_id,
         )
     )
     progress = db.scalar(
@@ -259,7 +293,7 @@ def complete_attempt(db: Session, attempt_id: int) -> CompletionSummary:
     unlock flags are refreshed before achievements are synced, so every derived
     value in the returned summary reflects the same post-lesson world.
     """
-    attempt = _load_open_attempt(db, attempt_id)
+    attempt = _claim_attempt(db, attempt_id)
     lesson = get_lesson(db, attempt.lesson_id)
     stats = get_stats(db, attempt.user_id)
     today: date = clock.today()
@@ -269,7 +303,7 @@ def complete_attempt(db: Session, attempt_id: int) -> CompletionSummary:
         lesson.xp_reward, attempt.hearts_lost, stats.hearts
     )
 
-    crown_earned, progress = _award_crown(db, attempt.user_id, lesson)
+    crown_earned, progress = _award_crown(db, attempt.user_id, lesson, attempt.id)
 
     attempt.is_completed = True
     attempt.completed_at = clock.now()

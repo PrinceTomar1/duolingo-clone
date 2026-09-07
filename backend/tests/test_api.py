@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.main import app
 from app.models.course import Course, Skill, Unit
@@ -299,3 +300,91 @@ class TestSeedIdempotence:
             db.scalar(select(func.count(User.id))),
         )
         assert first == second
+
+
+class TestUnknownIdsAre404:
+    """A request naming something that does not exist says so.
+
+    These used to answer 200: the path came back with every skill locked (which
+    reads as "no progress" rather than "no such learner"), and an unknown skill
+    returned an empty lesson list indistinguishable from a real skill with no
+    lessons yet. Both now match what /users/{id}/stats has always done.
+    """
+
+    def test_path_for_an_unknown_user_is_404(self, client: TestClient) -> None:
+        response = client.get("/api/v1/course/path", params={"user_id": 999_999})
+        assert response.status_code == 404
+        assert response.json()["error"] == "NotFoundError"
+
+    def test_path_for_a_real_user_still_works(self, client: TestClient, user: User) -> None:
+        assert client.get("/api/v1/course/path", params={"user_id": user.id}).status_code == 200
+
+    def test_lessons_of_an_unknown_skill_is_404(self, client: TestClient) -> None:
+        assert client.get("/api/v1/course/skills/999999/lessons").status_code == 404
+
+    def test_lessons_of_a_real_skill_still_works(
+        self, client: TestClient, db: Session, course: Course
+    ) -> None:
+        unit = db.scalars(
+            select(Unit).where(Unit.course_id == course.id).order_by(Unit.order_index)
+        ).first()
+        skill = db.scalars(
+            select(Skill).where(Skill.unit_id == unit.id).order_by(Skill.order_index)
+        ).first()
+        response = client.get(f"/api/v1/course/skills/{skill.id}/lessons")
+        assert response.status_code == 200
+        assert len(response.json()) > 0
+
+
+class TestServerOwnedConstants:
+    """Numbers the UI must not invent are published by the API."""
+
+    def test_stats_publishes_the_refill_price_and_bar_size(
+        self, client: TestClient, user: User
+    ) -> None:
+        body = client.get(f"/api/v1/users/{user.id}/stats").json()
+        assert body["heart_refill_gem_cost"] == settings.heart_refill_gem_cost
+        assert body["max_hearts"] == settings.max_hearts
+
+    def test_the_price_follows_configuration(self, client: TestClient, user: User) -> None:
+        # The point of sending it is that a reconfigured server changes the
+        # advertised price without a frontend release.
+        original = settings.heart_refill_gem_cost
+        settings.heart_refill_gem_cost = 99
+        try:
+            body = client.get(f"/api/v1/users/{user.id}/stats").json()
+            assert body["heart_refill_gem_cost"] == 99
+        finally:
+            settings.heart_refill_gem_cost = original
+
+
+class TestCompletionIsClaimedOnce:
+    """Only one caller may ever complete an attempt."""
+
+    def test_second_completion_is_rejected_and_awards_nothing(
+        self, client: TestClient, db: Session, course: Course, user: User
+    ) -> None:
+        lesson_id = first_lesson_id(db, course)
+        attempt_id = client.post(
+            f"/api/v1/lessons/{lesson_id}/start", json={"user_id": user.id}
+        ).json()["attempt_id"]
+
+        first = client.post(f"/api/v1/attempts/{attempt_id}/complete")
+        assert first.status_code == 200
+        awarded = client.get(f"/api/v1/users/{user.id}/stats").json()["total_xp"]
+
+        second = client.post(f"/api/v1/attempts/{attempt_id}/complete")
+        assert second.status_code == 409
+        assert client.get(f"/api/v1/users/{user.id}/stats").json()["total_xp"] == awarded
+
+    def test_a_first_completion_still_earns_its_crown(
+        self, client: TestClient, db: Session, course: Course, user: User
+    ) -> None:
+        # The claim marks the attempt complete before crowns are counted, so the
+        # lookback must exclude it -- otherwise every first completion would
+        # find itself and silently withhold the crown.
+        lesson_id = first_lesson_id(db, course)
+        attempt_id = client.post(
+            f"/api/v1/lessons/{lesson_id}/start", json={"user_id": user.id}
+        ).json()["attempt_id"]
+        assert client.post(f"/api/v1/attempts/{attempt_id}/complete").json()["crown_earned"] is True

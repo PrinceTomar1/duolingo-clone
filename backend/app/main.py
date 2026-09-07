@@ -56,6 +56,7 @@ app.include_router(lessons.router, prefix=settings.api_v1_prefix)
 app.include_router(users.router, prefix=settings.api_v1_prefix)
 app.include_router(leaderboard.router, prefix=settings.api_v1_prefix)
 
-# Registered only in debug builds -- see the module docstring.
-if settings.debug:
+# Registered only where the demo clock is wanted -- see the module docstring.
+# Controlled by ENABLE_DEMO_CLOCK, falling back to DEBUG when that is unset.
+if settings.demo_clock_enabled:
     app.include_router(dev.router, prefix=settings.api_v1_prefix)

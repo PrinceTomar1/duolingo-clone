@@ -15,8 +15,10 @@ import { useThemeStore } from "@/store/useThemeStore";
  *
  * The day simulator is here rather than hidden because being able to *show*
  * the streak rule -- survive one quiet day, break on the second -- is the point
- * of the feature. It calls the backend's DEBUG-only endpoint, which simply does
- * not exist in a production build.
+ * of the feature. It calls an endpoint the backend mounts only when its demo
+ * clock is enabled (ENABLE_DEMO_CLOCK, falling back to DEBUG); where it is off,
+ * the route does not exist and the button reports that rather than failing
+ * silently.
  */
 export default function SettingsPage() {
   const theme = useThemeStore((state) => state.theme);
@@ -33,7 +35,7 @@ export default function SettingsPage() {
       setSimulated(result.simulated_today);
       await refreshStats();
     } catch {
-      setSimulated("unavailable — the API is running with DEBUG off");
+      setSimulated("unavailable — this deployment has the demo clock switched off");
     } finally {
       setIsBusy(false);
     }
@@ -89,9 +91,13 @@ export default function SettingsPage() {
           <Icon name="clock" size={22} />
           Demo controls
         </h2>
-        <p className="mb-4 text-sm font-bold text-wolf">
+        <p className="mb-2 text-sm font-bold text-wolf">
           Streaks are derived from the daily-XP ledger. Advance the clock one day and the streak
           survives; advance a second day with no lessons and it resets to zero.
+        </p>
+        <p className="mb-4 text-sm font-bold text-fox">
+          The simulated clock is shared by everyone using this deployment, and moves the date for
+          every learner — not just you.
         </p>
 
         <Button variant="secondary" size="lg" fullWidth disabled={isBusy} onClick={() => void advanceDay()}>

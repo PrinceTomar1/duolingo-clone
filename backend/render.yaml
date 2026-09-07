@@ -20,12 +20,19 @@ services:
       uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
-      # Left on deliberately for the demo. DEBUG mounts routers/dev.py, whose
-      # only job is to advance the simulated clock -- without it a reviewer
-      # cannot see streaks or heart regeneration work, since both would
-      # otherwise take real days. The brief asks for exactly this ("day logic
-      # can be simulated/testable"). Turn it off for a real deployment.
       - key: DEBUG
+        value: "false"
+      # The day simulator stays on deliberately, but as its own explicit switch
+      # rather than riding on DEBUG. routers/dev.py only advances the simulated
+      # clock, and without it a reviewer cannot see streaks or heart
+      # regeneration work -- both would otherwise take real days, and the brief
+      # asks for exactly this ("day logic can be simulated/testable").
+      #
+      # Be aware of what it costs: the clock is process-global, so any visitor
+      # advancing a day moves the demo for everyone. That is acceptable for a
+      # single-learner review build and nothing else -- set it to "false" for
+      # any deployment with real users.
+      - key: ENABLE_DEMO_CLOCK
         value: "true"
       - key: DATABASE_URL
         fromDatabase:

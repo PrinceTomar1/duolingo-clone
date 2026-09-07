@@ -12,7 +12,7 @@ export function PathSkeleton() {
         {Array.from({ length: 5 }, (_, index) => (
           <div
             key={index}
-            style={{ transform: `translateX(${Math.sin(index * 0.9) * 26}%)` }}
+            style={{ transform: `translateX(calc(${Math.sin(index * 0.8).toFixed(3)} * min(26vw, 120px)))` }}
             className="h-[72px] w-[72px] rounded-full bg-swan dark:bg-night-raised"
           />
         ))}

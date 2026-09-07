@@ -61,6 +61,7 @@ export function MatchPairs({ payload, state, onPair, onChange }: MatchPairsProps
             <Tile
               key={left}
               label={left}
+              side="left"
               isSelected={state.pendingLeft === left}
               isSolved={state.solved.includes(left)}
               isWrong={state.wrong?.[0] === left}
@@ -73,6 +74,7 @@ export function MatchPairs({ payload, state, onPair, onChange }: MatchPairsProps
             <Tile
               key={right}
               label={right}
+              side="right"
               isSelected={false}
               isSolved={state.pairs.some((pair) => pair.right === right)}
               isWrong={state.wrong?.[1] === right}
@@ -87,16 +89,19 @@ export function MatchPairs({ payload, state, onPair, onChange }: MatchPairsProps
 
 interface TileProps {
   label: string;
+  side: "left" | "right";
   isSelected: boolean;
   isSolved: boolean;
   isWrong: boolean;
   onClick: () => void;
 }
 
-function Tile({ label, isSelected, isSolved, isWrong, onClick }: TileProps) {
+function Tile({ label, side, isSelected, isSolved, isWrong, onClick }: TileProps) {
   return (
     <button
       type="button"
+      data-testid={`match-${side}`}
+      data-value={label}
       onClick={onClick}
       disabled={isSolved}
       aria-pressed={isSelected}

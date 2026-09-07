@@ -15,3 +15,6 @@ out/
 .DS_Store
 .vscode/
 .idea/
+
+# Next/TypeScript build metadata
+*.tsbuildinfo

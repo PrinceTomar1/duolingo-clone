@@ -18,6 +18,9 @@ const STATES: Record<TileState, string> = {
   wrong: "border-cardinal border-b-4 bg-incorrect-bg text-incorrect-text animate-shake",
 };
 
+// `data-testid`/`data-value` are stable hooks for the end-to-end browser
+// walkthrough: the rendered text alone is ambiguous once the hotkey badge sits
+// inside the button.
 interface OptionTileProps {
   label: string;
   state: TileState;
@@ -34,6 +37,8 @@ export function OptionTile({ label, state, disabled, onClick, hotkey }: OptionTi
       onClick={onClick}
       disabled={disabled}
       aria-pressed={state === "selected"}
+      data-testid="option"
+      data-value={label}
       className={clsx(
         "flex w-full items-center gap-3 rounded-2xl border-2 px-4 py-3.5 text-left text-base font-bold transition-colors duration-100",
         disabled && state === "idle" ? "opacity-60" : "",

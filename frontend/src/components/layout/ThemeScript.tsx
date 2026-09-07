@@ -1,4 +1,4 @@
-import { THEME_STORAGE_KEY } from "@/store/useThemeStore";
+import { THEME_STORAGE_KEY } from "@/lib/theme";
 
 /**
  * Applies the saved theme before React hydrates.

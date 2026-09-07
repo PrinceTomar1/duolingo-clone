@@ -45,6 +45,7 @@ export function WordBank({ payload, chosen, result, onChange }: WordBankProps) {
             key={bankIndex}
             layoutId={`tile-${bankIndex}`}
             type="button"
+            data-testid="answer-tile"
             disabled={isLocked}
             onClick={() => onChange(chosen.filter((item) => item !== bankIndex))}
             className="rounded-xl border-2 border-swan border-b-4 bg-snow px-3 py-2 font-bold dark:border-night-border dark:bg-night-raised"
@@ -77,6 +78,8 @@ export function WordBank({ payload, chosen, result, onChange }: WordBankProps) {
                 <motion.button
                   layoutId={`tile-${bankIndex}`}
                   type="button"
+                  data-testid="bank-tile"
+                  data-index={bankIndex}
                   disabled={isLocked}
                   onClick={() => onChange([...chosen, bankIndex])}
                   className="absolute inset-0 rounded-xl border-2 border-swan border-b-4 bg-snow px-3 py-2 font-bold transition-colors hover:bg-polar disabled:opacity-60 dark:border-night-border dark:bg-night-raised dark:hover:bg-night"

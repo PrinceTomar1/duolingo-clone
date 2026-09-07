@@ -10,9 +10,7 @@
 
 import { create } from "zustand";
 
-export type Theme = "light" | "dark";
-
-export const THEME_STORAGE_KEY = "duo-theme";
+import { THEME_STORAGE_KEY, type Theme } from "@/lib/theme";
 
 interface ThemeState {
   theme: Theme;

@@ -1,0 +1,37 @@
+# One command to run both services: `docker compose up --build`.
+#
+# The backend migrates and seeds itself on start, so the app is usable the
+# moment the containers are healthy.
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      DEBUG: "true"
+      DATABASE_URL: "sqlite:////data/duolingo.db"
+      CORS_ORIGINS: "http://localhost:3000"
+    volumes:
+      # Named volume so progress made in the UI survives a container restart.
+      - backend-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Baked in at build time because Next inlines NEXT_PUBLIC_* variables.
+        NEXT_PUBLIC_API_URL: "http://localhost:8000"
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  backend-data:

@@ -37,6 +37,7 @@ export function TypeAnswer({ payload, value, result, onChange, onSubmit }: TypeA
 
       <textarea
         ref={inputRef}
+        data-testid="type-answer"
         value={value}
         rows={3}
         spellCheck={false}

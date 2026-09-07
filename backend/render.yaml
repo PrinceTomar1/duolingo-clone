@@ -2,7 +2,7 @@
 #
 # The live deployment runs here rather than on Railway because that account hit
 # its free-plan resource cap. railway.json and the Procfile are kept alongside
-# this and remain valid — the app is host-agnostic.
+# this and remain valid -- the app is host-agnostic.
 services:
   - type: web
     name: duolingo-clone-api
@@ -20,14 +20,21 @@ services:
       uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
+      # Left on deliberately for the demo. DEBUG mounts routers/dev.py, whose
+      # only job is to advance the simulated clock -- without it a reviewer
+      # cannot see streaks or heart regeneration work, since both would
+      # otherwise take real days. The brief asks for exactly this ("day logic
+      # can be simulated/testable"). Turn it off for a real deployment.
       - key: DEBUG
-        value: "false"
+        value: "true"
       - key: DATABASE_URL
         fromDatabase:
           name: duolingo-clone-db
           property: connectionString
+      # The deployed frontend's production alias on Vercel. Preview deploys get
+      # random subdomains, so add them here if you need one to reach this API.
       - key: CORS_ORIGINS
-        sync: false # set to the Vercel domain after the frontend deploys
+        value: https://duolingo-clone-princetomar70276-4850s-projects.vercel.app
 
 databases:
   - name: duolingo-clone-db

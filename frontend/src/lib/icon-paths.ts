@@ -71,6 +71,15 @@ export const ICONS: Record<IconName, IconDefinition> = DEFINITIONS;
 
 export type IconName = keyof typeof DEFINITIONS;
 
+/**
+ * An icon name that may have come from the API.
+ *
+ * Skill and achievement icons are stored as strings in the database, so they
+ * cannot be typed as `IconName` at the boundary. `resolveIcon` narrows them,
+ * falling back to a neutral glyph rather than rendering nothing.
+ */
+export type IconRef = IconName | (string & {});
+
 /** Falls back to a neutral glyph so unknown seed content never crashes a render. */
 export function resolveIcon(name: string): IconName {
   return name in ICONS ? (name as IconName) : "sparkles";

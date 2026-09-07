@@ -7,6 +7,7 @@ import { MobileTabBar } from "@/components/layout/MobileTabBar";
 import { MobileTopBar } from "@/components/layout/MobileTopBar";
 import { RightRail } from "@/components/layout/RightRail";
 import { Sidebar } from "@/components/layout/Sidebar";
+import { ToastStack } from "@/components/ui/ToastStack";
 import { useSessionStore } from "@/store/useSessionStore";
 import { useThemeStore } from "@/store/useThemeStore";
 
@@ -42,6 +43,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <main className="mx-auto w-full max-w-2xl px-4 pb-24 pt-4 lg:pb-10">{children}</main>
       </div>
       <MobileTabBar />
+      {/* Raised by the lesson player, shown on whatever screen the learner
+          lands on afterwards. */}
+      <ToastStack />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { ICONS, resolveIcon, type IconName } from "@/lib/icon-paths";
+import { ICONS, resolveIcon, type IconRef } from "@/lib/icon-paths";
 
 /**
  * Renders one glyph from the icon table.
@@ -8,7 +8,7 @@ import { ICONS, resolveIcon, type IconName } from "@/lib/icon-paths";
  */
 
 interface IconProps {
-  name: IconName | string;
+  name: IconRef;
   size?: number;
   className?: string;
   strokeWidth?: number;

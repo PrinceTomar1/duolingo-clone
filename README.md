@@ -25,6 +25,10 @@ answer key, XP formula, heart rule or unlock condition exists in the browser.
 |---|---|---|
 | ![Feedback bar](docs/screenshots/feedback.png) | ![Match pairs](docs/screenshots/match.png) | ![Mobile](docs/screenshots/mobile-375.png) |
 
+| Streak & achievement toasts | Out of hearts / quit |
+|---|---|
+| ![Toasts](docs/screenshots/toasts.png) | ![Quit modal](docs/screenshots/quit-modal.png) |
+
 Captured from the running app with Playwright at 1440x900 (and 375x780 for
 mobile), not mocked.
 

@@ -3,7 +3,7 @@
 A working Duolingo clone: a winding skill path, a full-screen lesson player with
 five exercise types, and server-authoritative hearts, XP, streaks and crowns.
 
-**Stack:** FastAPI + SQLAlchemy 2.0 + Alembic + SQLite · Next.js 14 App Router +
+**Stack:** FastAPI + SQLAlchemy 2.0 + Alembic + SQLite · Next.js 15 App Router +
 TypeScript (strict) + Tailwind + Zustand + framer-motion.
 
 The guiding principle throughout: **the client renders, the server decides.** No
@@ -76,7 +76,7 @@ cd frontend && npm run typecheck && npm run lint
 **End-to-end (Playwright).** These drive the real UI against a real backend --
 nothing is stubbed, because the behaviour worth protecting (a heart is spent, a
 locked skill refuses to open, a dropped connection is reported) is decided by the
-server. Needs both processes up, the backend with `DEBUG=true`:
+server. Needs both processes up, the backend with the demo clock on (`DEBUG=true`, the default):
 
 ```bash
 cd frontend
@@ -94,7 +94,8 @@ regeneration uses -- rather than writing to the database behind the app's back.
 
 | Service | Variable | Default | Purpose |
 |---|---|---|---|
-| backend | `DEBUG` | `true` | Registers the `/api/v1/dev/*` day-simulation routes. When false they are never mounted. |
+| backend | `DEBUG` | `true` | General debug flag. Used as the fallback for `ENABLE_DEMO_CLOCK`. |
+| backend | `ENABLE_DEMO_CLOCK` | *(follows `DEBUG`)* | Mounts the `/api/v1/dev/*` day-simulation routes. Off means they do not exist at all. The simulated clock is process-global and shared by every visitor, so enable it only on a demo. |
 | backend | `DATABASE_URL` | `sqlite:///./duolingo.db` | Any SQLAlchemy URL; Postgres works unchanged. |
 | backend | `CORS_ORIGINS` | `http://localhost:3000,...` | Comma-separated browser origins. |
 | frontend | `NEXT_PUBLIC_API_URL` | `http://127.0.0.1:8000` | Backend base URL. **No localhost is hardcoded in the source.** |
@@ -137,7 +138,7 @@ network**, so the base URL, error shape and failure translation are decided once
                     Browser
                        │
    ┌───────────────────┴────────────────────┐
-   │  Next.js 14 App Router (frontend/)     │
+   │  Next.js 15 App Router (frontend/)     │
    │                                        │
    │  app/          routes & pages          │
    │  components/   path · lesson ·         │
@@ -330,11 +331,19 @@ docs at `/docs`.
 | `GET` | `/users/{id}/profile` | Identity, stats, crowns, badges, 14 days of ledger. |
 | `POST` | `/users/{id}/hearts/refill` | Spends 350 gems for a full bar. 409 if full or short. |
 | `GET` | `/leaderboard?limit=` | Ranked on the last 7 days of `daily_xp`. |
-| `POST` | `/dev/advance-day` | **DEBUG only.** Moves the simulated clock so streak behaviour is provable in seconds. |
-| `POST` | `/dev/reset-clock` | **DEBUG only.** Back to real time. |
+| `POST` | `/dev/advance-day` | **Demo clock only.** Moves the simulated clock so streak behaviour is provable in seconds. |
+| `POST` | `/dev/reset-clock` | **Demo clock only.** Back to real time. |
 | `GET` | `/health` | Liveness probe. |
 
-Error responses are uniform: `{"detail": "...", "error": "SkillLockedError"}`.
+Errors come back in two shapes, and the client handles both:
+
+- **Domain refusals** (403/404/409) — `{"detail": "Finish the previous skill…",
+  "error": "SkillLockedError"}`. The `error` field is a stable code the UI
+  branches on, which is how an out-of-hearts refusal reaches its own screen
+  rather than a generic error notice.
+- **Request validation** (422, FastAPI's own) — `detail` is an **array** of
+  per-field objects. `lib/api.ts` flattens these to `"field: reason"` so a
+  learner never sees a raw object.
 
 ---
 
@@ -386,8 +395,9 @@ break the seeding logic.
   deployed backend URL. Note that Next inlines `NEXT_PUBLIC_*` at *build* time,
   so changing it requires a redeploy, not just a restart.
 - **Backend → Railway:** `backend/railway.json` + `backend/Procfile`. The start
-  command migrates, seeds, then serves. Set `DEBUG=false` and `CORS_ORIGINS` to
-  the Vercel domain.
+  command migrates, seeds, then serves. Set `DEBUG=false`, `CORS_ORIGINS` to the
+  Vercel domain, and `ENABLE_DEMO_CLOCK` deliberately — `true` keeps the streak
+  demonstrable, `false` is right for anything with real users.
 - **SQLite on Railway** needs a mounted volume, or the database is lost on every
   redeploy. Point `DATABASE_URL` at Postgres for anything real — the models and
   migrations need no changes.
@@ -452,7 +462,7 @@ Things I decided rather than asked about, and what I traded away.
 9. **The simulated clock is process-local and not persisted.** It is a demo aid,
    so a restart must return the app to real time. It also means the offset is
    not shared across workers — irrelevant for a single-process demo, and the
-   router is not mounted at all when `DEBUG=false`.
+   router is not mounted at all when the demo clock is disabled.
 
 10. **Wrong answers are not re-queued.** The real app re-inserts a failed
     exercise later in the lesson. Not implemented; every exercise is asked once,

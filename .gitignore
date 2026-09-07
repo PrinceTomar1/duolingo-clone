@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.db
+.env
+
+# Node
+node_modules/
+.next/
+out/
+.env*.local
+
+# Editors / OS
+.DS_Store
+.vscode/
+.idea/

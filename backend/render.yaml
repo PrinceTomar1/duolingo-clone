@@ -9,16 +9,19 @@
 # create resources from it). This file is kept as the accurate, reproducible
 # declaration of that same architecture.
 #
-# A real chicken-and-egg constraint worth knowing before applying this from a
-# dashboard "New Blueprint Instance": the backend's CORS_ORIGINS needs the
-# frontend's exact `.onrender.com` hostname, and the frontend's
-# NEXT_PUBLIC_API_URL needs the backend's (baked in at build time, since
-# Next.js inlines NEXT_PUBLIC_* then). Render assigns that hostname's random
-# suffix only once the *first* deploy of a service starts -- it is not
-# knowable in advance, and is not guaranteed to be the bare `--name` with no
-# suffix even the first time a name is used. After the first blueprint apply,
-# read the two real URLs from the Render dashboard and update the two env
-# vars below to match, then redeploy each service once.
+# The app is reachable from ONE url -- the frontend's -- because
+# next.config.mjs proxies `/api/v1/*` to BACKEND_URL server-side; the browser
+# never talks to the backend's domain directly. That still leaves one real
+# ordering constraint worth knowing before applying this from a dashboard "New
+# Blueprint Instance": BACKEND_URL below needs the backend's actual assigned
+# hostname, which Render decides only once that service's *first* deploy
+# starts -- it is not knowable in advance, and is not guaranteed to be the
+# bare `--name` with no random suffix even the first time a name is used.
+# Deploy the backend first, read its real URL from the dashboard, then set
+# BACKEND_URL to it before (or by redeploying after) the frontend's build.
+# CORS_ORIGINS matters far less now that requests are same-origin; it is kept
+# so the backend also answers cleanly to direct cross-origin API calls (e.g.
+# for grading or manual testing against duolingo-clone-backend-w886 itself).
 services:
   - type: web
     name: duolingo-clone-backend
@@ -78,10 +81,15 @@ services:
     # `next start` needs an explicit port; Render only routes to $PORT.
     startCommand: npx next start -p $PORT
     envVars:
-      # Next.js inlines NEXT_PUBLIC_* at *build* time, so this must be the
-      # backend's real URL before this service's build runs -- not a
-      # reference resolved later. See the chicken-and-egg note above.
-      - key: NEXT_PUBLIC_API_URL
+      # Deliberately not NEXT_PUBLIC_API_URL. With it unset, lib/api.ts's base
+      # URL defaults to same-origin (""), so every browser request goes to
+      # this frontend's own domain, and next.config.mjs's rewrite forwards
+      # `/api/v1/*` to BACKEND_URL server-side. The browser never sees the
+      # backend's address, which is what makes the deployed app reachable
+      # from one URL instead of two. BACKEND_URL has no NEXT_PUBLIC_ prefix on
+      # purpose -- it is read only by next.config.mjs and Next's own server,
+      # never bundled into client code.
+      - key: BACKEND_URL
         value: https://duolingo-clone-backend-w886.onrender.com
 
 databases:

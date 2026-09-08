@@ -392,13 +392,20 @@ break the seeding logic.
 
 ## Deployment
 
-**Both services run on Render**, deployed from `backend/render.yaml`:
+**One URL for the whole app:** https://duolingo-clone-frontend-tg3r.onrender.com
 
-| Service | URL | Notes |
+There is no separate backend link to hand out. `next.config.mjs` proxies
+`/api/v1/*` to the backend server-side, inside Next's own Node process, so
+every request the browser makes — page loads and API calls alike — goes to
+that one domain. The backend still runs as its own Render service
+(https://duolingo-clone-backend-w886.onrender.com), reachable directly for
+grading or manual API testing, but the deployed *product* is one link.
+
+| Service | Role | Notes |
 |---|---|---|
-| Backend (FastAPI) | https://duolingo-clone-backend-w886.onrender.com | Free web service, Python 3.13.5, migrates + seeds (`--if-empty`) on every start |
-| Frontend (Next.js) | https://duolingo-clone-frontend-tg3r.onrender.com | Free web service, Node runtime, `next start` |
-| Database | Render Postgres 16 (free) | See below — **not SQLite in production** |
+| Frontend (Next.js) | The URL above | Free web service, Node runtime, proxies `/api/v1/*` to the backend |
+| Backend (FastAPI) | Proxied, also directly reachable | Free web service, Python 3.13.5, migrates + seeds (`--if-empty`) on every start |
+| Database | Not public | Render Postgres 16 (free) — see below, **not SQLite in production** |
 
 **The production database is PostgreSQL, not SQLite**, even though SQLite is
 the default everywhere else (local dev, CI, the test suite). The assignment
@@ -433,19 +440,27 @@ actual deployment here was built with `render services create` /
 `render postgres create` (one Render CLI call per resource, every env var set
 in the same call) rather than a dashboard blueprint apply — the CLI's
 blueprint support only validates a YAML file, it does not create resources
-from it. Whichever path you take, two env vars have a real chicken-and-egg
-constraint: the backend's `CORS_ORIGINS` needs the frontend's exact assigned
-hostname, and the frontend's `NEXT_PUBLIC_API_URL` needs the backend's (baked
-in at *build* time, since Next.js inlines `NEXT_PUBLIC_*` then) — and Render
-does not let you know either hostname before that service's first deploy
-starts. Deploy the backend first, then the frontend with the backend's real
-URL, then update the backend's `CORS_ORIGINS` to the frontend's real URL and
-redeploy it once more (a plain env-var update, not a rebuild).
+from it. There is one real ordering constraint: the frontend's `BACKEND_URL`
+needs the backend's actual assigned hostname, which Render decides only once
+that service's *first* deploy starts and does not let you know in advance.
+Deploy the backend first, read its real URL, then deploy the frontend with
+`BACKEND_URL` set to it. `NEXT_PUBLIC_API_URL` is deliberately **not set** on
+the frontend at all — see `lib/api.ts` and `next.config.mjs` for why leaving
+it unset is what makes the single-URL proxy work.
 
 The demo learner's progress lives in that Postgres instance and persists
-across deploys and cold starts — a free instance sleeps after 15 minutes of
-inactivity, and the `--if-empty` seed guard is exactly what keeps a wake-up
-from resetting it.
+across deploys and cold starts. **A free instance sleeps after 15 minutes of
+inactivity**, and the `--if-empty` seed guard is exactly what keeps a wake-up
+from resetting it — but disclosed honestly, the wake-up itself was observed
+taking as long as **~3 minutes** on a cold backend (not the 30–60s a Render
+free tier often manages), which shows up as a slow or briefly-502ing first
+request if the proxy's own request to the backend times out mid-wake. It
+recovers on its own; reloading after a few seconds is normal, not a bug.
+There is no code fix for this — free compute that sleeps is the platform's
+tradeoff, not this app's. A paid Render plan (always-on) or an external
+uptime ping every 10–14 minutes would both remove it; neither was set up
+here, since both cost either money or an external dependency beyond this
+assignment's scope.
 
 ---
 
@@ -454,10 +469,14 @@ from resetting it.
 Things I decided rather than asked about, and what I traded away.
 
 1. **No authentication.** The assignment is about the learning experience, so
-   the "session" is the demo learner resolved by username at boot. Every
+   the "session" is a demo learner resolved by username at boot. Every
    endpoint takes an explicit `user_id`. Adding real auth means a dependency
    that resolves the caller and replaces that parameter — the service layer
-   never changes, because no service reads a request.
+   never changes, because no service reads a request. Profile's "Switch
+   learner" is the honest shape a no-auth demo's account switching takes:
+   it swaps which of the ten seeded learners is loaded (and remembers the
+   choice), rather than a fake "log out" that would pretend to end a session
+   that was never started.
 
 2. **`daily_xp` ledger instead of a streak counter.** A counter is a number
    nobody can audit: if a bug double-increments it, the damage is permanent and
@@ -513,12 +532,16 @@ Things I decided rather than asked about, and what I traded away.
     exercise later in the lesson. Not implemented; every exercise is asked once,
     which keeps `exercises_answered` and the accuracy figure exact.
 
-11. **Explicitly mocked, and labelled as such in the UI:** the guidebook button,
-    and streak freeze / unlimited hearts in the shop. Each says it is not part of
-    the build rather than pretending to work. Everything else on screen is real:
-    the quests page, including the two weekly quests, reads `weekly_xp` (summed
-    from the last seven ledger days) and the streak, so no progress bar on this
-    build is decorative.
+11. **Explicitly mocked, and labelled as such in the UI:** the guidebook button
+    (disabled, not just styled to look inert), streak freeze, unlimited hearts
+    in the shop, and every course but Spanish in the home page's language
+    picker ("Coming soon"). Each says plainly that it is not part of the
+    build rather than pretending to work. Everything else on screen is real:
+    the quests page, including the two weekly quests, reads `weekly_xp`
+    (summed from the last seven ledger days) and the streak; the speaker
+    button on a lesson genuinely speaks the Spanish phrase aloud via the
+    browser's Web Speech API — no progress bar or control on this build is
+    decorative.
 
 ---
 

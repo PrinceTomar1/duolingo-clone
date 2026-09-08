@@ -12,6 +12,9 @@ import { QuitModal } from "@/components/lesson/QuitModal";
 import { useLessonRunner } from "@/components/lesson/useLessonRunner";
 import { Button } from "@/components/ui/Button";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { Icon } from "@/components/ui/Icon";
+import { speakableText } from "@/lib/answers";
+import { speak } from "@/lib/sound";
 import { useSessionStore } from "@/store/useSessionStore";
 
 /**
@@ -85,7 +88,23 @@ export function LessonPlayer({ lessonId, userId }: { lessonId: number; userId: n
       />
 
       <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center px-5 py-6">
-        <h1 className="mb-6 text-center text-lg font-extrabold sm:text-xl">{exercise.prompt}</h1>
+        <div className="mb-6 flex items-center justify-center gap-2">
+          <h1 className="text-center text-lg font-extrabold sm:text-xl">{exercise.prompt}</h1>
+          {(() => {
+            const text = speakableText(exercise);
+            if (!text) return null;
+            return (
+              <button
+                type="button"
+                aria-label="Hear this in Spanish"
+                onClick={() => speak(text)}
+                className="shrink-0 rounded-full p-1.5 text-macaw transition-colors hover:bg-macaw/10"
+              >
+                <Icon name="volume" size={22} />
+              </button>
+            );
+          })()}
+        </div>
         <ExerciseView
           exercise={exercise}
           draft={runner.draft}

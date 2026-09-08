@@ -35,3 +35,28 @@ export function buildAnswer(exercise: Exercise, draft: ExerciseDraft): Submitted
         : null;
   }
 }
+
+/**
+ * The Spanish phrase this exercise is actually about, for the speaker button
+ * to read aloud -- or `null` when speaking one would give the answer away.
+ *
+ * Three of the five types show their Spanish text as the *question*
+ * (`payload.question`/`sentence`/`source_sentence`), so speaking it is safe
+ * before an answer exists. The other two ask the learner to *produce* Spanish
+ * (TYPE_ANSWER's `source_sentence` is the English prompt; MATCH_PAIRS mixes
+ * both languages across many tiles), so there is no single unrevealing phrase
+ * to speak and the button is omitted rather than guessed at.
+ */
+export function speakableText(exercise: Exercise): string | null {
+  switch (exercise.type) {
+    case "MULTIPLE_CHOICE":
+      return exercise.payload.question;
+    case "FILL_BLANK":
+      return exercise.payload.sentence;
+    case "TRANSLATE_WORD_BANK":
+      return exercise.payload.source_sentence;
+    case "TYPE_ANSWER":
+    case "MATCH_PAIRS":
+      return null;
+  }
+}

@@ -2,9 +2,12 @@
  * The only module in the app that talks to the network.
  *
  * Every call goes through `request`, so the error shape and the base URL are
- * decided once. The base URL comes from `NEXT_PUBLIC_API_URL` -- there is
- * no hardcoded localhost anywhere, which is what makes the Vercel build work
- * against a deployed backend without a code change.
+ * decided once. The base URL comes from `NEXT_PUBLIC_API_URL`; local dev sets
+ * it explicitly (see .env.example) to the backend's own address. Left unset,
+ * it defaults to same-origin ("") rather than a hardcoded host -- that is what
+ * lets the deployed app sit behind next.config.mjs's rewrite of `/api/v1/*` to
+ * the real backend, so the whole product is reachable from one URL with no
+ * separate backend link to hand out.
  */
 
 import type {
@@ -20,7 +23,7 @@ import type {
   UserStats,
 } from "@/types/api";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 /**
  * An error carrying the backend's status code and error *type*.

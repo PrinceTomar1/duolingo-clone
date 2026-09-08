@@ -57,3 +57,32 @@ export function playIncorrect(): void {
   tone(200, 0, 0.18, 0.16);
   tone(150, 0.1, 0.22, 0.14);
 }
+
+/**
+ * Speak a phrase aloud in the target language.
+ *
+ * Uses the browser's own Web Speech API rather than shipped audio files or a
+ * third-party TTS service -- no binary assets, no API key, no per-request
+ * cost, and it works offline once the voice is cached by the OS. Coverage is
+ * real but not universal (a browser with no Spanish voice installed falls
+ * back to its default voice rather than failing), which is the same tradeoff
+ * the assignment brief accepts by calling audio optional/placeholder.
+ *
+ * `lang` is a BCP 47 tag ("es-ES"); every exercise in this course speaks
+ * Spanish, so callers do not need to plumb the course's language through.
+ */
+export function speak(text: string, lang = "es-ES"): void {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+  try {
+    // A new utterance while one is already talking would overlap; cutting the
+    // old one off is what a second tap on the speaker icon should do.
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = lang;
+    utterance.rate = 0.9;
+    window.speechSynthesis.speak(utterance);
+  } catch {
+    // A learner who taps the speaker on a browser with no speech support
+    // should see nothing worse than silence, never a broken lesson.
+  }
+}

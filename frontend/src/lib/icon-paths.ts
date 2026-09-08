@@ -55,8 +55,30 @@ const DEFINITIONS = {
   "chevron-left": { paths: ["M15 5l-7 7 7 7"] },
   "chevron-right": { paths: ["M9 5l7 7-7 7"] },
   "chevron-down": { paths: ["M5 9l7 7 7-7"] },
-  sun: { paths: ["M12 17a5 5 0 100-10 5 5 0 000 10z", "M12 1v2", "M12 21v2", "M4.2 4.2l1.4 1.4", "M18.4 18.4l1.4 1.4", "M1 12h2", "M21 12h2", "M4.2 19.8l1.4-1.4", "M18.4 5.6l1.4-1.4"] },
-  moon: { paths: ["M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 106.6 15.6c1.8-.9 3.2-2.4 3.9-4.3z"] },
+  // Filled, not stroked -- the two paired themes need to read as equally
+  // bold. A stroked sun (thin rays, thin circle) next to a stroked moon (one
+  // thick crescent outline) looked like two different icon sets side by side,
+  // which is exactly what a toggle's two states must not do. Rays are small
+  // filled quadrilaterals (computed, not traced) rather than zero-width lines,
+  // since a zero-width path has no area and disappears entirely once filled.
+  sun: {
+    paths: [
+      "M12 17a5 5 0 100-10 5 5 0 000 10z",
+      "M19.5 11.1h2v1.8h-2z",
+      "M11.1 19.5h1.8v2h-1.8z",
+      "M2.5 11.1h2v1.8h-2z",
+      "M11.1 2.5h1.8v2h-1.8z",
+      "M16.67 17.94L18.08 19.35L19.35 18.08L17.94 16.67Z",
+      "M6.06 16.67L4.65 18.08L5.92 19.35L7.34 17.94Z",
+      "M7.34 6.06L5.92 4.65L4.65 5.92L6.06 7.34Z",
+      "M17.94 7.34L19.35 5.92L18.08 4.65L16.67 6.06Z",
+    ],
+    filled: true,
+  },
+  moon: {
+    paths: ["M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 106.6 15.6c1.8-.9 3.2-2.4 3.9-4.3z"],
+    filled: true,
+  },
   volume: { paths: ["M11 5L6.5 9H3v6h3.5L11 19V5z", "M15.5 9a4 4 0 010 6", "M18.5 6.5a8 8 0 010 11"] },
   infinity: { paths: ["M7 15a3 3 0 110-6c2.5 0 3.5 6 6 6a3 3 0 100-6c-2.5 0-3.5 6-6 6z"] },
 } satisfies Record<string, IconDefinition>;

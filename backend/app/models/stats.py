@@ -43,6 +43,12 @@ class UserStats(Base):
     daily_goal_xp: Mapped[int] = mapped_column(
         Integer, nullable=False, default=settings.default_daily_goal_xp
     )
+    # This learner's own simulated-clock offset from real time, in seconds.
+    # Persisted per row (not a process-global variable) so /dev/advance-day
+    # moves only the learner who asked for it, a restart never loses the
+    # offset, and it survives across however many backend instances/workers
+    # end up serving requests. See app.core.clock.now_for/today_for.
+    clock_offset_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     user: Mapped["User"] = relationship(back_populates="stats")
 

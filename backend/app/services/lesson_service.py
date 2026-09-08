@@ -86,7 +86,8 @@ def get_stats(db: Session, user_id: int) -> UserStats:
     """Load a learner's stats with heart regeneration already applied."""
     stats = db.get(UserStats, user_id)
     _require(stats, "User")
-    return gamification_service.apply_heart_regen(stats)  # type: ignore[arg-type]
+    moment = clock.now_for(stats.clock_offset_seconds)  # type: ignore[union-attr]
+    return gamification_service.apply_heart_regen(stats, moment)  # type: ignore[arg-type]
 
 
 def _course_for_lesson(db: Session, lesson: Lesson) -> Course:
@@ -124,7 +125,9 @@ def start_attempt(db: Session, user_id: int, lesson_id: int) -> tuple[LessonAtte
     if progress is None or not progress.is_unlocked:
         raise SkillLockedError("Finish the previous skill to unlock this lesson.")
 
-    attempt = LessonAttempt(user_id=user_id, lesson_id=lesson_id, started_at=clock.now())
+    attempt = LessonAttempt(
+        user_id=user_id, lesson_id=lesson_id, started_at=clock.now_for(stats.clock_offset_seconds)
+    )
     db.add(attempt)
     db.commit()
     db.refresh(attempt)
@@ -191,7 +194,7 @@ def submit_answer(
         # Counted on the attempt even when the learner is already at zero, so
         # the accuracy shown on the completion screen stays exact.
         attempt.hearts_lost += 1
-        gamification_service.lose_heart(stats)
+        gamification_service.lose_heart(stats, clock.now_for(stats.clock_offset_seconds))
 
     db.commit()
     return AnswerResult(
@@ -296,7 +299,7 @@ def complete_attempt(db: Session, attempt_id: int) -> CompletionSummary:
     attempt = _claim_attempt(db, attempt_id)
     lesson = get_lesson(db, attempt.lesson_id)
     stats = get_stats(db, attempt.user_id)
-    today: date = clock.today()
+    today: date = clock.today_for(stats.clock_offset_seconds)
 
     streak_before = stats.current_streak
     xp = gamification_service.calculate_lesson_xp(
@@ -306,7 +309,7 @@ def complete_attempt(db: Session, attempt_id: int) -> CompletionSummary:
     crown_earned, progress = _award_crown(db, attempt.user_id, lesson, attempt.id)
 
     attempt.is_completed = True
-    attempt.completed_at = clock.now()
+    attempt.completed_at = clock.now_for(stats.clock_offset_seconds)
     attempt.xp_earned = xp
 
     stats.total_xp += xp
@@ -348,7 +351,7 @@ def complete_attempt(db: Session, attempt_id: int) -> CompletionSummary:
 def refill_hearts_with_gems(db: Session, user_id: int) -> UserStats:
     """Spend gems for a full heart bar, or refuse with a 400-mapped error."""
     stats = get_stats(db, user_id)
-    if not gamification_service.refill_hearts(stats):
+    if not gamification_service.refill_hearts(stats, clock.now_for(stats.clock_offset_seconds)):
         raise ConflictError(
             "Hearts are already full or you need {} gems.".format(settings.heart_refill_gem_cost)
         )

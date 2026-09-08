@@ -29,7 +29,7 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 def _stats_payload(db: Session, stats: UserStats) -> UserStatsRead:
     """Assemble the stats response, including the two derived heart fields."""
-    today = clock.today()
+    today = clock.today_for(stats.clock_offset_seconds)
     return UserStatsRead(
         user_id=stats.user_id,
         total_xp=stats.total_xp,
@@ -38,7 +38,9 @@ def _stats_payload(db: Session, stats: UserStats) -> UserStatsRead:
         last_active_date=stats.last_active_date,
         hearts=stats.hearts,
         max_hearts=settings.max_hearts,
-        seconds_until_next_heart=gamification_service.seconds_until_next_heart(stats),
+        seconds_until_next_heart=gamification_service.seconds_until_next_heart(
+            stats, clock.now_for(stats.clock_offset_seconds)
+        ),
         gems=stats.gems,
         heart_refill_gem_cost=settings.heart_refill_gem_cost,
         daily_goal_xp=stats.daily_goal_xp,
@@ -83,7 +85,7 @@ def create_user(body: UserCreate, db: Session = Depends(get_db)) -> User:
         UserStats(
             user_id=user.id,
             hearts=settings.max_hearts,
-            hearts_updated_at=clock.now(),
+            hearts_updated_at=clock.now_for(0),
             daily_goal_xp=settings.default_daily_goal_xp,
         )
     )
@@ -125,7 +127,10 @@ def read_user_profile(user_id: int, db: Session = Depends(get_db)) -> UserProfil
 
     activity = db.scalars(
         select(DailyXp)
-        .where(DailyXp.user_id == user_id, DailyXp.date >= clock.today() - timedelta(days=13))
+        .where(
+            DailyXp.user_id == user_id,
+            DailyXp.date >= clock.today_for(stats.clock_offset_seconds) - timedelta(days=13),
+        )
         .order_by(DailyXp.date)
     ).all()
 

@@ -67,6 +67,8 @@ def sync_achievements(db: Session, user_id: int) -> list[Achievement]:
     to raise a toast, so a replayed request cannot spam the learner.
     """
     metrics = asdict(collect_metrics(db, user_id))
+    stats_for_clock = db.get(UserStats, user_id)
+    moment = clock.now_for(stats_for_clock.clock_offset_seconds if stats_for_clock else 0)
     existing = {
         row.achievement_id: row
         for row in db.scalars(
@@ -84,7 +86,7 @@ def sync_achievements(db: Session, user_id: int) -> list[Achievement]:
         # Progress is clamped so the UI can render progress/target directly.
         row.progress = min(value, achievement.target)
         if row.unlocked_at is None and value >= achievement.target:
-            row.unlocked_at = clock.now()
+            row.unlocked_at = moment
             newly_unlocked.append(achievement)
 
     return newly_unlocked

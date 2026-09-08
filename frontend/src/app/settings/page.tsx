@@ -23,15 +23,31 @@ import { useThemeStore } from "@/store/useThemeStore";
 export default function SettingsPage() {
   const theme = useThemeStore((state) => state.theme);
   const toggleTheme = useThemeStore((state) => state.toggle);
+  const user = useSessionStore((state) => state.user);
   const stats = useSessionStore((state) => state.stats);
   const refreshStats = useSessionStore((state) => state.refreshStats);
   const [simulated, setSimulated] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
 
   async function advanceDay(): Promise<void> {
+    if (!user) return;
     setIsBusy(true);
     try {
-      const result = await api.advanceDay(1);
+      const result = await api.advanceDay(user.id, 1);
+      setSimulated(result.simulated_today);
+      await refreshStats();
+    } catch {
+      setSimulated("unavailable — this deployment has the demo clock switched off");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function resetClock(): Promise<void> {
+    if (!user) return;
+    setIsBusy(true);
+    try {
+      const result = await api.resetClock(user.id);
       setSimulated(result.simulated_today);
       await refreshStats();
     } catch {
@@ -96,13 +112,24 @@ export default function SettingsPage() {
           survives; advance a second day with no lessons and it resets to zero.
         </p>
         <p className="mb-4 text-sm font-bold text-fox">
-          The simulated clock is shared by everyone using this deployment, and moves the date for
-          every learner — not just you.
+          The simulated clock is personal: it is stored on your own learner profile, so advancing it
+          moves only your date, not anyone else&apos;s.
         </p>
 
-        <Button variant="secondary" size="lg" fullWidth disabled={isBusy} onClick={() => void advanceDay()}>
-          {isBusy ? "Advancing…" : "Advance one day"}
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="secondary"
+            size="lg"
+            fullWidth
+            disabled={isBusy || !user}
+            onClick={() => void advanceDay()}
+          >
+            {isBusy ? "Advancing…" : "Advance one day"}
+          </Button>
+          <Button variant="ghost" size="lg" disabled={isBusy || !user} onClick={() => void resetClock()}>
+            Reset
+          </Button>
+        </div>
 
         {simulated && (
           <p className="mt-3 text-center text-sm font-bold text-wolf">

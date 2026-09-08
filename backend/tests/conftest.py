@@ -144,3 +144,26 @@ def user(db: Session) -> User:
     )
     db.commit()
     return learner
+
+
+@pytest.fixture
+def other_user(db: Session) -> User:
+    """A second, independent learner -- for tests asserting one learner's
+    actions (notably the per-learner demo clock) do not leak onto another's."""
+    learner = User(username="tester2", display_name="Tester Two", avatar_color="#1CB0F6")
+    db.add(learner)
+    db.flush()
+    db.add(
+        UserStats(
+            user_id=learner.id,
+            total_xp=0,
+            current_streak=0,
+            longest_streak=0,
+            hearts=5,
+            hearts_updated_at=clock.now(),
+            gems=500,
+            daily_goal_xp=20,
+        )
+    )
+    db.commit()
+    return learner

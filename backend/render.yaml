@@ -51,15 +51,11 @@ services:
       - key: DEBUG
         value: "false"
       # The day simulator stays on deliberately, but as its own explicit switch
-      # rather than riding on DEBUG. routers/dev.py only advances the simulated
-      # clock, and without it a reviewer cannot see streaks or heart
-      # regeneration work -- both would otherwise take real days, and the brief
-      # asks for exactly this ("day logic can be simulated/testable").
-      #
-      # Be aware of what it costs: the clock is process-global, so any visitor
-      # advancing a day moves the demo for everyone. That is acceptable for a
-      # single-learner review build and nothing else -- set it to "false" for
-      # any deployment with real users.
+      # rather than riding on DEBUG. routers/dev.py only advances one learner's
+      # simulated clock (persisted per learner on user_stats.clock_offset_seconds,
+      # not process-global state), and without it a reviewer cannot see streaks
+      # or heart regeneration work -- both would otherwise take real days, and
+      # the brief asks for exactly this ("day logic can be simulated/testable").
       - key: ENABLE_DEMO_CLOCK
         value: "true"
       - key: DATABASE_URL

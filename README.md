@@ -96,7 +96,7 @@ regeneration uses -- rather than writing to the database behind the app's back.
 | Service | Variable | Default | Purpose |
 |---|---|---|---|
 | backend | `DEBUG` | `true` | General debug flag. Used as the fallback for `ENABLE_DEMO_CLOCK`. |
-| backend | `ENABLE_DEMO_CLOCK` | *(follows `DEBUG`)* | Mounts the `/api/v1/dev/*` day-simulation routes. Off means they do not exist at all. The simulated clock is process-global and shared by every visitor, so enable it only on a demo. |
+| backend | `ENABLE_DEMO_CLOCK` | *(follows `DEBUG`)* | Mounts the `/api/v1/dev/*` day-simulation routes. Off means they do not exist at all. The simulated clock is personal to whichever learner's `user_id` is named in the request (persisted on their own `user_stats` row) — advancing it never moves another learner's date. |
 | backend | `DATABASE_URL` | `sqlite:///./duolingo.db` | Any SQLAlchemy URL; Postgres works unchanged. |
 | backend | `CORS_ORIGINS` | `http://localhost:3000,...` | Comma-separated browser origins. |
 | frontend | `NEXT_PUBLIC_API_URL` | `http://127.0.0.1:8000` | Backend base URL. **No localhost is hardcoded in the source.** |
@@ -328,12 +328,13 @@ docs at `/docs`.
 | `POST` | `/attempts/{attempt_id}/match-pair` | Verifies **one** match-pairs link so the board can flash green/red. Costs no heart. |
 | `POST` | `/attempts/{attempt_id}/complete` | Awards XP, crowns, streak, unlocks, achievements; returns the completion summary. |
 | `GET` | `/users/by-username/{username}` | Bootstraps the demo learner without a hardcoded id. |
+| `POST` | `/users` | Creates a new learner (`username`, `display_name`) — what "Add a new learner" calls. 409 on a taken username. |
 | `GET` | `/users/{id}/stats` | Hearts (after lazy regen), streak, gems, today's XP, weekly XP. |
 | `GET` | `/users/{id}/profile` | Identity, stats, crowns, badges, 14 days of ledger. |
 | `POST` | `/users/{id}/hearts/refill` | Spends 350 gems for a full bar. 409 if full or short. |
-| `GET` | `/leaderboard?limit=` | Ranked on the last 7 days of `daily_xp`. |
-| `POST` | `/dev/advance-day` | **Demo clock only.** Moves the simulated clock so streak behaviour is provable in seconds. |
-| `POST` | `/dev/reset-clock` | **Demo clock only.** Back to real time. |
+| `GET` | `/leaderboard?limit=` | Ranked on the last 7 days of `daily_xp` (real time — one shared week for every learner, see below). |
+| `POST` | `/dev/advance-day` | **Demo clock only.** Moves the named `user_id`'s own simulated clock so streak behaviour is provable in seconds — no other learner's clock moves. |
+| `POST` | `/dev/reset-clock` | **Demo clock only.** Returns the named `user_id` to real time. |
 | `GET` | `/health` | Liveness probe. |
 
 Errors come back in two shapes, and the client handles both:
@@ -426,6 +427,31 @@ subquery instead of grouping the outer query at all — see the git history for
 `app/routers/leaderboard.py`. It is why this README recommends testing
 against Postgres at least once before trusting any query that groups or joins,
 not only at the end.
+
+**Re-checked deliberately, not assumed:** it would have been easy to also
+blame SQLite for the concurrency requirement (duplicate/concurrent lesson
+completion) and use that as a second reason to keep Postgres. That turned out
+not to hold up: fired 8 real concurrent `POST /attempts/{id}/complete`
+requests at a locally running SQLite-backed instance (genuine threads over
+HTTP, not the test client) and got exactly one 200, seven clean 409s, zero
+`database is locked` errors, and XP awarded exactly once — Python's `sqlite3`
+module waits up to 5 seconds for a lock by default, which is far longer than
+the single-row conditional `UPDATE` this app's duplicate-completion guard
+needs to release one. So SQLite *can* safely handle this app's concurrency;
+**persistence, not concurrency, is the actual and only reason production
+uses Postgres.** Reporting a database as unsafe for a reason that does not
+hold up under test would be exactly the kind of unverified claim this project
+tries not to make.
+
+One more free-tier fact worth knowing before it surprises anyone: **Render's
+free Postgres databases expire and are deleted 30 days after creation**
+(visible on the database in the Render dashboard). This is a platform limit
+on the free plan, not something this project's configuration controls. If the
+database has expired by the time this is reviewed, `render postgres create`
+plus updating `DATABASE_URL` recreates it in a couple of minutes — the schema
+comes back via `alembic upgrade head` and the seed guard (`--if-empty`) on the
+next deploy; only demo data is lost, exactly as it would be on the very first
+deploy.
 
 **Python version is pinned** (`backend/.python-version`, and `PYTHON_VERSION`
 in the blueprint): Render's default runtime for new services is a very recent
@@ -523,10 +549,14 @@ Things I decided rather than asked about, and what I traded away.
    would be a pass-through that adds a file per aggregate and hides the query.
    Services use the ORM directly and keep their queries visible.
 
-9. **The simulated clock is process-local and not persisted.** It is a demo aid,
-   so a restart must return the app to real time. It also means the offset is
-   not shared across workers — irrelevant for a single-process demo, and the
-   router is not mounted at all when the demo clock is disabled.
+9. **The simulated clock is per-learner and persisted, not process-global.**
+   Each learner's offset from real time lives on their own `user_stats.clock_offset_seconds`
+   column, not a module-level variable — advancing one learner's day never
+   moves another's, a restart never undoes it, and `/dev/reset-clock` drops
+   only the named learner back to real time. (An earlier version of this kept
+   the offset in process memory, shared by every visitor; fixed for exactly
+   that reason.) The router is still not mounted at all when the demo clock is
+   disabled.
 
 10. **Wrong answers are not re-queued.** The real app re-inserts a failed
     exercise later in the lesson. Not implemented; every exercise is asked once,
@@ -541,7 +571,12 @@ Things I decided rather than asked about, and what I traded away.
     (summed from the last seven ledger days) and the streak; the speaker
     button on a lesson genuinely speaks the Spanish phrase aloud via the
     browser's Web Speech API — no progress bar or control on this build is
-    decorative.
+    decorative. The button shows its own state rather than being fire-and-
+    forget: a pulsing icon while the browser is actually talking, and an
+    honest "Audio isn't available in this browser" note (not a silently dead
+    button) if the browser has no speech synthesis at all or its engine
+    errors out. Coverage depends on the browser/OS having a voice installed
+    for the target language — real everywhere tested, not universal.
 
 ---
 

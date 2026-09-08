@@ -190,14 +190,60 @@ class TestLeaderboard:
 
 
 class TestDevEndpoints:
-    def test_advancing_a_day_reports_the_simulated_date(self, client: TestClient) -> None:
+    """The demo clock: personal to one learner, not a shared process-global."""
+
+    def test_advancing_a_day_reports_the_simulated_date(
+        self, client: TestClient, user: User
+    ) -> None:
         from app.core import clock
 
         before = clock.today()
-        body = client.post("/api/v1/dev/advance-day", json={"days": 3}).json()
+        body = client.post(
+            "/api/v1/dev/advance-day", json={"user_id": user.id, "days": 3}
+        ).json()
         assert body["simulated_today"] != before.isoformat()
         assert body["offset_seconds"] == 3 * 24 * 3600
-        client.post("/api/v1/dev/reset-clock")
+        client.post("/api/v1/dev/reset-clock", json={"user_id": user.id})
+
+    def test_advancing_one_learners_clock_does_not_move_another_learners(
+        self, client: TestClient, user: User, other_user: User
+    ) -> None:
+        client.post("/api/v1/dev/advance-day", json={"user_id": user.id, "days": 5})
+
+        moved = client.get("/api/v1/users/{}/stats".format(user.id)).json()
+        untouched = client.get("/api/v1/users/{}/stats".format(other_user.id)).json()
+
+        # The advanced learner's own clock actually moved...
+        advanced_body = client.post(
+            "/api/v1/dev/advance-day", json={"user_id": user.id, "days": 0}
+        ).json()
+        assert advanced_body["offset_seconds"] == 5 * 24 * 3600
+        # ...while the other learner was never touched: their offset is still zero.
+        other_body = client.post(
+            "/api/v1/dev/advance-day", json={"user_id": other_user.id, "days": 0}
+        ).json()
+        assert other_body["offset_seconds"] == 0
+        # Both stats reads succeeded and are for the right learner (sanity check
+        # that this endpoint did not 404 or silently no-op).
+        assert moved["user_id"] == user.id
+        assert untouched["user_id"] == other_user.id
+
+    def test_reset_only_affects_the_named_learner(
+        self, client: TestClient, user: User, other_user: User
+    ) -> None:
+        client.post("/api/v1/dev/advance-day", json={"user_id": user.id, "days": 10})
+        client.post("/api/v1/dev/advance-day", json={"user_id": other_user.id, "days": 10})
+
+        client.post("/api/v1/dev/reset-clock", json={"user_id": user.id})
+
+        reset_body = client.post(
+            "/api/v1/dev/advance-day", json={"user_id": user.id, "days": 0}
+        ).json()
+        still_advanced_body = client.post(
+            "/api/v1/dev/advance-day", json={"user_id": other_user.id, "days": 0}
+        ).json()
+        assert reset_body["offset_seconds"] == 0
+        assert still_advanced_body["offset_seconds"] == 10 * 24 * 3600
 
 
 class TestMatchPairCheck:

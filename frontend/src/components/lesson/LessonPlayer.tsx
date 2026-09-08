@@ -17,6 +17,9 @@ import { speakableText } from "@/lib/answers";
 import { speak } from "@/lib/sound";
 import { useSessionStore } from "@/store/useSessionStore";
 
+/** The speaker button's own state, shown right on the icon -- see `SpeakerButton`. */
+type SpeechState = "idle" | "speaking" | "unavailable";
+
 /**
  * The full-screen lesson takeover.
  *
@@ -90,20 +93,7 @@ export function LessonPlayer({ lessonId, userId }: { lessonId: number; userId: n
       <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center px-5 py-6">
         <div className="mb-6 flex items-center justify-center gap-2">
           <h1 className="text-center text-lg font-extrabold sm:text-xl">{exercise.prompt}</h1>
-          {(() => {
-            const text = speakableText(exercise);
-            if (!text) return null;
-            return (
-              <button
-                type="button"
-                aria-label="Hear this in Spanish"
-                onClick={() => speak(text)}
-                className="shrink-0 rounded-full p-1.5 text-macaw transition-colors hover:bg-macaw/10"
-              >
-                <Icon name="volume" size={22} />
-              </button>
-            );
-          })()}
+          {speakableText(exercise) && <SpeakerButton key={exercise.id} text={speakableText(exercise)!} />}
         </div>
         <ExerciseView
           exercise={exercise}
@@ -167,5 +157,46 @@ export function LessonPlayer({ lessonId, userId }: { lessonId: number; userId: n
         />
       )}
     </div>
+  );
+}
+
+/**
+ * The volume icon next to a prompt, with its own visible state.
+ *
+ * `speak()` used to be fire-and-forget: tapping it either worked silently or
+ * failed silently, and those look identical to a learner. This surfaces both
+ * outcomes -- a pulsing icon while the browser is actually talking, and a
+ * plain-language note if the browser has no speech support (or its synthesis
+ * engine errors out) instead of a speaker that just never seems to do
+ * anything. Keyed by exercise id in the parent, so switching questions always
+ * starts a fresh button rather than carrying over a stale "unavailable".
+ */
+function SpeakerButton({ text }: { text: string }) {
+  const [state, setState] = useState<SpeechState>("idle");
+
+  function handleClick() {
+    if (state === "speaking") return;
+    setState("speaking");
+    void speak(text, "es-ES", {
+      onEnd: () => setState("idle"),
+      onError: () => setState("unavailable"),
+    });
+  }
+
+  return (
+    <span className="flex shrink-0 items-center gap-1.5">
+      <button
+        type="button"
+        aria-label="Hear this in Spanish"
+        aria-busy={state === "speaking"}
+        onClick={handleClick}
+        className="rounded-full p-1.5 text-macaw transition-colors hover:bg-macaw/10 disabled:text-hare"
+      >
+        <Icon name="volume" size={22} className={state === "speaking" ? "animate-pulse" : undefined} />
+      </button>
+      {state === "unavailable" && (
+        <span className="text-xs font-bold text-hare">Audio isn&apos;t available in this browser</span>
+      )}
+    </span>
   );
 }

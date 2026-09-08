@@ -26,8 +26,15 @@ def read_leaderboard(
     this week still appears (with zero) rather than vanishing from the league.
     Ties break on all-time XP, then username, so the order is stable between
     requests.
+
+    The week boundary deliberately uses real time (offset 0), not any one
+    learner's own simulated clock: ranking learners against each other only
+    makes sense against one shared "this week", the same way it would in a
+    league with real users. Each learner's *own* weekly XP on their stats card
+    is a different, personal question, and does follow their own simulated day
+    -- see ``_stats_payload`` in ``routers/users.py``.
     """
-    week_start = clock.today() - timedelta(days=6)
+    week_start = clock.today_for(0) - timedelta(days=6)
 
     # Pre-aggregate per user in a subquery rather than GROUP BY on the outer
     # query. SQLite tolerates a GROUP BY that names only User.id while also
@@ -59,7 +66,7 @@ def read_leaderboard(
 
     return LeaderboardRead(
         week_start=week_start,
-        week_end=clock.today(),
+        week_end=clock.today_for(0),
         entries=[
             LeaderboardEntry(
                 rank=rank,

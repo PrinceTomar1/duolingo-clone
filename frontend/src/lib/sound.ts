@@ -58,6 +58,46 @@ export function playIncorrect(): void {
   tone(150, 0.1, 0.22, 0.14);
 }
 
+/** Whether this browser can attempt speech synthesis at all. */
+export function canSpeak(): boolean {
+  return typeof window !== "undefined" && "speechSynthesis" in window;
+}
+
+/**
+ * Resolve once the browser has at least one voice loaded, or after a short
+ * timeout -- whichever comes first.
+ *
+ * Chrome (unlike Safari/Firefox) loads its voice list asynchronously: calling
+ * `speak()` before `getVoices()` has ever populated does not error, it just
+ * produces silence, which is indistinguishable from the feature being broken.
+ * This is the fix for that: wait for the one-time `voiceschanged` event most
+ * browsers fire when the list first arrives, capped at 300ms so a browser
+ * that never fires it (or never gets a voice at all -- some headless/CI
+ * environments) does not hang the speaker button.
+ */
+function voicesReady(): Promise<void> {
+  const synth = window.speechSynthesis;
+  if (synth.getVoices().length > 0) return Promise.resolve();
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, 300);
+    synth.addEventListener(
+      "voiceschanged",
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      { once: true },
+    );
+  });
+}
+
+interface SpeakCallbacks {
+  onStart?: () => void;
+  onEnd?: () => void;
+  /** Fired for an unsupported browser, or a synthesis engine that errors out. */
+  onError?: () => void;
+}
+
 /**
  * Speak a phrase aloud in the target language.
  *
@@ -65,24 +105,33 @@ export function playIncorrect(): void {
  * third-party TTS service -- no binary assets, no API key, no per-request
  * cost, and it works offline once the voice is cached by the OS. Coverage is
  * real but not universal (a browser with no Spanish voice installed falls
- * back to its default voice rather than failing), which is the same tradeoff
- * the assignment brief accepts by calling audio optional/placeholder.
+ * back to its default voice rather than failing); `onError` is how a caller
+ * turns that into an honest "audio isn't available here" message instead of
+ * a speaker button that looks broken.
  *
  * `lang` is a BCP 47 tag ("es-ES"); every exercise in this course speaks
  * Spanish, so callers do not need to plumb the course's language through.
  */
-export function speak(text: string, lang = "es-ES"): void {
-  if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+export async function speak(text: string, lang = "es-ES", callbacks: SpeakCallbacks = {}): Promise<void> {
+  const { onStart, onEnd, onError } = callbacks;
+  if (!canSpeak()) {
+    onError?.();
+    return;
+  }
   try {
     // A new utterance while one is already talking would overlap; cutting the
     // old one off is what a second tap on the speaker icon should do.
     window.speechSynthesis.cancel();
+    await voicesReady();
+
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = lang;
     utterance.rate = 0.9;
+    utterance.onstart = () => onStart?.();
+    utterance.onend = () => onEnd?.();
+    utterance.onerror = () => onError?.();
     window.speechSynthesis.speak(utterance);
   } catch {
-    // A learner who taps the speaker on a browser with no speech support
-    // should see nothing worse than silence, never a broken lesson.
+    onError?.();
   }
 }

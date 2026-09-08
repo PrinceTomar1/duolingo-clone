@@ -103,5 +103,5 @@ export async function ensureHearts(minimum = 3): Promise<void> {
   const current = await stats(DEMO_USER_ID);
   if (current.hearts >= minimum) return;
   const missing = minimum - current.hearts;
-  await post("/dev/advance-day", { days: 0, minutes: missing * 30 + 5 });
+  await post("/dev/advance-day", { user_id: DEMO_USER_ID, days: 0, minutes: missing * 30 + 5 });
 }

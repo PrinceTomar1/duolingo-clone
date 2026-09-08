@@ -166,9 +166,15 @@ export const api = {
 
   leaderboard: () => request<Leaderboard>("/leaderboard"),
 
-  advanceDay: (days: number) =>
-    request<{ simulated_today: string; streaks: Record<string, number> }>("/dev/advance-day", {
+  advanceDay: (userId: number, days: number) =>
+    request<{ simulated_today: string; current_streak: number }>("/dev/advance-day", {
       method: "POST",
-      body: { days },
+      body: { user_id: userId, days },
+    }),
+
+  resetClock: (userId: number) =>
+    request<{ simulated_today: string; current_streak: number }>("/dev/reset-clock", {
+      method: "POST",
+      body: { user_id: userId },
     }),
 };

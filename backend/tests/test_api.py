@@ -388,3 +388,57 @@ class TestCompletionIsClaimedOnce:
             f"/api/v1/lessons/{lesson_id}/start", json={"user_id": user.id}
         ).json()["attempt_id"]
         assert client.post(f"/api/v1/attempts/{attempt_id}/complete").json()["crown_earned"] is True
+
+
+class TestCreateUser:
+    """POST /users -- the "Add a new learner" flow the frontend switcher uses."""
+
+    def test_creates_a_learner_with_a_fresh_start(self, client: TestClient) -> None:
+        response = client.post(
+            "/api/v1/users", json={"username": "newkid", "display_name": "New Kid"}
+        )
+        assert response.status_code == 201
+        body = response.json()
+        assert body["username"] == "newkid"
+        assert body["display_name"] == "New Kid"
+
+        stats = client.get(f"/api/v1/users/{body['id']}/stats").json()
+        assert stats["total_xp"] == 0
+        assert stats["current_streak"] == 0
+        assert stats["gems"] == 0
+        assert stats["hearts"] == settings.max_hearts
+
+    def test_duplicate_username_is_rejected(self, client: TestClient, user: User) -> None:
+        response = client.post(
+            "/api/v1/users", json={"username": user.username, "display_name": "Someone Else"}
+        )
+        assert response.status_code == 409
+
+    def test_username_is_case_insensitive_on_collision(
+        self, client: TestClient, user: User
+    ) -> None:
+        response = client.post(
+            "/api/v1/users",
+            json={"username": user.username.upper(), "display_name": "Shouty"},
+        )
+        assert response.status_code == 409
+
+    def test_blank_display_name_is_rejected(self, client: TestClient) -> None:
+        response = client.post(
+            "/api/v1/users", json={"username": "blankname", "display_name": ""}
+        )
+        assert response.status_code == 422
+
+    def test_a_new_learner_can_immediately_start_the_first_lesson(
+        self, client: TestClient, db: Session, course: Course
+    ) -> None:
+        # The whole point of a fresh account: it should be playable on the
+        # very first request, with no separate "initialise progress" step.
+        new_user = client.post(
+            "/api/v1/users", json={"username": "playsnow", "display_name": "Plays Now"}
+        ).json()
+        lesson_id = first_lesson_id(db, course)
+        response = client.post(
+            f"/api/v1/lessons/{lesson_id}/start", json={"user_id": new_user["id"]}
+        )
+        assert response.status_code == 201

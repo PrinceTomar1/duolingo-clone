@@ -46,6 +46,17 @@ interface SessionState {
    * there is no session to end -- it swaps which one is loaded.
    */
   switchTo: (username: string) => Promise<void>;
+  /**
+   * Create a brand new learner and switch to it.
+   *
+   * The one thing "Switch learner" could not do until now: everyone reachable
+   * from it was one of the ten seeded accounts, chosen by clicking a name with
+   * no chance to say who a new learner actually is. This asks the server to
+   * create a real row, then loads it the same way any other learner loads.
+   * Left to the caller to catch -- a taken username is a 409 the form should
+   * show inline, not a session-wide error banner.
+   */
+  createLearner: (username: string, displayName: string) => Promise<void>;
   /** Re-read stats from the server after something changed them. */
   refreshStats: () => Promise<void>;
   /** Replace stats with a payload the server already returned. */
@@ -86,6 +97,17 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       // this load; it just will not stick past a refresh.
     }
     await loadUser(username, set);
+  },
+
+  createLearner: async (username, displayName) => {
+    const user = await api.createUser(username, displayName);
+    try {
+      window.localStorage.setItem(ACTIVE_USERNAME_KEY, user.username);
+    } catch {
+      // Same private-browsing caveat as switchTo: the switch still applies to
+      // this load, it just will not survive a refresh.
+    }
+    await loadUser(user.username, set);
   },
 
   refreshStats: async () => {

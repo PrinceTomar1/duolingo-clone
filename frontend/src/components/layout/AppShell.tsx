@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect } from "react";
 
 import { MobileTabBar } from "@/components/layout/MobileTabBar";
 import { MobileTopBar } from "@/components/layout/MobileTopBar";
@@ -23,10 +23,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const bootstrap = useSessionStore((state) => state.bootstrap);
   const hydrateTheme = useThemeStore((state) => state.hydrate);
 
+  // Theme hydration is a `useLayoutEffect`, not a plain `useEffect`: the store
+  // starts at a hardcoded "light" (there is no DOM to read from during server
+  // rendering), while `<html>` may already carry `dark` from ThemeScript's
+  // pre-paint tag. A passive effect fires *after* the browser paints, which
+  // left a real window where the Settings toggle visually showed "off" while
+  // the page was already dark -- and a tap in that window read the stale
+  // "light" state and asked to turn dark *on*, which was a no-op the learner
+  // felt as the button not working. A layout effect runs synchronously before
+  // that first paint, so the toggle is correct before it is ever visible or
+  // clickable. `bootstrap` stays a plain effect: it is a network call with no
+  // equivalent visual race.
+  useLayoutEffect(() => {
+    hydrateTheme();
+  }, [hydrateTheme]);
+
   useEffect(() => {
     void bootstrap();
-    hydrateTheme();
-  }, [bootstrap, hydrateTheme]);
+  }, [bootstrap]);
 
   if (pathname.startsWith("/lesson/")) {
     return <>{children}</>;

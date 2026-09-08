@@ -151,6 +151,12 @@ export const api = {
 
   userByUsername: (username: string) => request<User>(`/users/by-username/${username}`),
 
+  createUser: (username: string, displayName: string) =>
+    request<User>("/users", {
+      method: "POST",
+      body: { username, display_name: displayName },
+    }),
+
   stats: (userId: number) => request<UserStats>(`/users/${userId}/stats`),
 
   profile: (userId: number) => request<UserProfile>(`/users/${userId}/profile`),

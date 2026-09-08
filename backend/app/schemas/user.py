@@ -17,6 +17,20 @@ class UserRead(ORMModel):
     created_at: datetime
 
 
+class UserCreate(BaseModel):
+    """What "Add a new learner" actually asks for.
+
+    Deliberately just the two fields a name badge needs -- there is no
+    password because there is no auth in this build (see the README), so
+    asking for one would be theatre. Length limits mirror the ``users`` table
+    columns so a request that would fail the database constraint fails
+    validation first, with a message naming the field.
+    """
+
+    username: str = Field(min_length=2, max_length=50, pattern=r"^[a-zA-Z0-9_]+$")
+    display_name: str = Field(min_length=1, max_length=100)
+
+
 class UserStatsRead(BaseModel):
     """The numbers on the right rail: hearts, streak, gems, daily goal."""
 

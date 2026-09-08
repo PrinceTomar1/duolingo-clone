@@ -5,10 +5,11 @@ import { useEffect, useState } from "react";
 import { AchievementCard } from "@/components/profile/AchievementCard";
 import { ActivityChart } from "@/components/profile/ActivityChart";
 import { Avatar } from "@/components/ui/Avatar";
+import { Button } from "@/components/ui/Button";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Icon } from "@/components/ui/Icon";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import type { IconName } from "@/lib/icon-paths";
 import { formatNumber } from "@/lib/format";
 import { useSessionStore } from "@/store/useSessionStore";
@@ -18,10 +19,16 @@ import type { LeaderboardEntry, UserProfile } from "@/types/api";
 export default function ProfilePage() {
   const user = useSessionStore((state) => state.user);
   const switchTo = useSessionStore((state) => state.switchTo);
+  const createLearner = useSessionStore((state) => state.createLearner);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [learners, setLearners] = useState<LeaderboardEntry[]>([]);
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newUsername, setNewUsername] = useState("");
+  const [newDisplayName, setNewDisplayName] = useState("");
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -39,6 +46,23 @@ export default function ProfilePage() {
     if (!switcherOpen || learners.length > 0) return;
     api.leaderboard().then((board) => setLearners(board.entries));
   }, [switcherOpen, learners.length]);
+
+  async function handleCreateLearner(event: React.FormEvent) {
+    event.preventDefault();
+    setIsCreating(true);
+    setCreateError(null);
+    try {
+      await createLearner(newUsername.trim(), newDisplayName.trim());
+      setSwitcherOpen(false);
+      setCreating(false);
+      setNewUsername("");
+      setNewDisplayName("");
+    } catch (cause) {
+      setCreateError(cause instanceof ApiError ? cause.message : "Could not create that learner");
+    } finally {
+      setIsCreating(false);
+    }
+  }
 
   if (error) return <ErrorNotice message={error} />;
   if (!profile) return <p className="py-10 text-center font-extrabold text-wolf">Loading…</p>;
@@ -79,7 +103,7 @@ export default function ProfilePage() {
       {switcherOpen && (
         <section className="mb-8 rounded-2xl border-2 border-swan p-3 dark:border-night-border">
           <p className="mb-2 px-1 text-xs font-bold text-hare">
-            No real accounts here — pick any seeded learner to view their progress.
+            No real accounts here — pick any seeded learner to view their progress, or add a new one.
           </p>
           {learners.length === 0 ? (
             <p className="px-1 py-2 text-sm font-bold text-wolf">Loading learners…</p>
@@ -109,6 +133,74 @@ export default function ProfilePage() {
               ))}
             </ul>
           )}
+
+          <div className="mt-2 border-t-2 border-swan pt-2 dark:border-night-border">
+            {!creating ? (
+              <button
+                type="button"
+                onClick={() => setCreating(true)}
+                className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left text-sm font-extrabold text-macaw transition-colors hover:bg-polar dark:hover:bg-night-raised"
+              >
+                <Icon name="plus" size={18} />
+                Add a new learner
+              </button>
+            ) : (
+              <form onSubmit={handleCreateLearner} className="space-y-2 px-1 py-1">
+                <div>
+                  <label htmlFor="new-learner-display-name" className="sr-only">
+                    Display name
+                  </label>
+                  <input
+                    id="new-learner-display-name"
+                    type="text"
+                    required
+                    maxLength={100}
+                    placeholder="Display name"
+                    value={newDisplayName}
+                    onChange={(event) => setNewDisplayName(event.target.value)}
+                    className="w-full rounded-xl border-2 border-swan bg-transparent px-3 py-2 text-sm font-bold outline-none focus:border-macaw dark:border-night-border"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="new-learner-username" className="sr-only">
+                    Username
+                  </label>
+                  <input
+                    id="new-learner-username"
+                    type="text"
+                    required
+                    minLength={2}
+                    maxLength={50}
+                    pattern="[a-zA-Z0-9_]+"
+                    title="Letters, numbers and underscores only"
+                    placeholder="Username"
+                    value={newUsername}
+                    onChange={(event) => setNewUsername(event.target.value)}
+                    className="w-full rounded-xl border-2 border-swan bg-transparent px-3 py-2 text-sm font-bold outline-none focus:border-macaw dark:border-night-border"
+                  />
+                </div>
+                {createError && <p className="px-1 text-xs font-bold text-cardinal">{createError}</p>}
+                <div className="flex gap-2 pt-1">
+                  <Button type="submit" size="sm" disabled={isCreating}>
+                    {isCreating ? "Creating…" : "Create & switch"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setCreating(false);
+                      setCreateError(null);
+                      setNewUsername("");
+                      setNewDisplayName("");
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            )}
+          </div>
         </section>
       )}
 

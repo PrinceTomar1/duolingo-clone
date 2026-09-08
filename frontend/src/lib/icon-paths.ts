@@ -50,6 +50,7 @@ const DEFINITIONS = {
   // --- Controls ---------------------------------------------------------
   check: { paths: ["M4 12.5l5.5 5.5L20 6.5"] },
   x: { paths: ["M6 6l12 12", "M18 6L6 18"] },
+  plus: { paths: ["M12 5v14", "M5 12h14"] },
   lock: { paths: ["M5 11h14v10H5V11z", "M8.5 11V7.5a3.5 3.5 0 017 0V11"] },
   "chevron-left": { paths: ["M15 5l-7 7 7 7"] },
   "chevron-right": { paths: ["M9 5l7 7-7 7"] },

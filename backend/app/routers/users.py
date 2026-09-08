@@ -16,12 +16,13 @@ from app.models.user import User
 from app.schemas.user import (
     AchievementRead,
     DailyXpRead,
+    UserCreate,
     UserProfileRead,
     UserRead,
     UserStatsRead,
 )
 from app.services import gamification_service, lesson_service
-from app.services.exceptions import NotFoundError
+from app.services.exceptions import ConflictError, NotFoundError
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -58,6 +59,36 @@ def read_user_by_username(username: str, db: Session = Depends(get_db)) -> User:
     user = db.scalar(select(User).where(User.username == username))
     if user is None:
         raise NotFoundError("No user named '{}'.".format(username))
+    return user
+
+
+@router.post("", response_model=UserRead, status_code=201)
+def create_user(body: UserCreate, db: Session = Depends(get_db)) -> User:
+    """Add a new learner: "Switch learner" -> "Add a new learner" asks for this.
+
+    A real signup form's entire job in a build with no auth: pick a name, get
+    a fresh account. The new learner starts exactly where the seeded ones did
+    on day one -- a full heart bar, no XP, no streak, no gems (Duolingo does
+    not hand out currency at signup either) -- because inventing more would
+    misrepresent what a brand new account actually has.
+    """
+    username = body.username.strip().lower()
+    if db.scalar(select(User).where(User.username == username)) is not None:
+        raise ConflictError("That username is already taken.")
+
+    user = User(username=username, display_name=body.display_name.strip())
+    db.add(user)
+    db.flush()  # Assigns user.id before UserStats references it.
+    db.add(
+        UserStats(
+            user_id=user.id,
+            hearts=settings.max_hearts,
+            hearts_updated_at=clock.now(),
+            daily_goal_xp=settings.default_daily_goal_xp,
+        )
+    )
+    db.commit()
+    db.refresh(user)
     return user
 
 

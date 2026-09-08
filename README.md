@@ -3,7 +3,8 @@
 A working Duolingo clone: a winding skill path, a full-screen lesson player with
 five exercise types, and server-authoritative hearts, XP, streaks and crowns.
 
-**Stack:** FastAPI + SQLAlchemy 2.0 + Alembic + SQLite · Next.js 15 App Router +
+**Stack:** FastAPI + SQLAlchemy 2.0 + Alembic + SQLite (dev/test) / Postgres
+(production — see Deployment) · Next.js 15 App Router +
 TypeScript (strict) + Tailwind + Zustand + framer-motion.
 
 The guiding principle throughout: **the client renders, the server decides.** No
@@ -164,7 +165,7 @@ network**, so the base URL, error shape and failure translation are decided once
    │      ↓                                 │
    │  models/     SQLAlchemy 2.0 ORM        │
    │      ↓                                 │
-   │  SQLite (Alembic-migrated)             │
+   │  SQLite dev / Postgres prod (Alembic)  │
    └────────────────────────────────────────┘
 ```
 
@@ -391,16 +392,60 @@ break the seeding logic.
 
 ## Deployment
 
-- **Frontend → Vercel:** `frontend/vercel.json`. Set `NEXT_PUBLIC_API_URL` to the
-  deployed backend URL. Note that Next inlines `NEXT_PUBLIC_*` at *build* time,
-  so changing it requires a redeploy, not just a restart.
-- **Backend → Railway:** `backend/railway.json` + `backend/Procfile`. The start
-  command migrates, seeds, then serves. Set `DEBUG=false`, `CORS_ORIGINS` to the
-  Vercel domain, and `ENABLE_DEMO_CLOCK` deliberately — `true` keeps the streak
-  demonstrable, `false` is right for anything with real users.
-- **SQLite on Railway** needs a mounted volume, or the database is lost on every
-  redeploy. Point `DATABASE_URL` at Postgres for anything real — the models and
-  migrations need no changes.
+**Both services run on Render**, deployed from `backend/render.yaml`:
+
+| Service | URL | Notes |
+|---|---|---|
+| Backend (FastAPI) | https://duolingo-clone-backend-w886.onrender.com | Free web service, Python 3.13.5, migrates + seeds (`--if-empty`) on every start |
+| Frontend (Next.js) | https://duolingo-clone-frontend-tg3r.onrender.com | Free web service, Node runtime, `next start` |
+| Database | Render Postgres 16 (free) | See below — **not SQLite in production** |
+
+**The production database is PostgreSQL, not SQLite**, even though SQLite is
+the default everywhere else (local dev, CI, the test suite). The assignment
+brief names SQLite; this deployment's database choice is a deliberate,
+disclosed exception, made for one concrete operational reason: **Render's free
+web services have no persistent disk** — a redeploy wipes the container
+filesystem, and SQLite is a file. Free Postgres is a genuinely separate,
+persistent resource with the same free-tier cost. The schema, models and
+Alembic migrations are dialect-agnostic (verified against a real local
+Postgres instance during development, alongside SQLite) — nothing in the
+application code changed to support this, only the deployed `DATABASE_URL`.
+
+One real bug this surfaced that SQLite's leniency had hidden: the leaderboard
+query grouped by `User.id` while selecting whole `User`/`UserStats` rows.
+SQLite allows that (it picks an arbitrary row for the ungrouped columns);
+Postgres correctly rejects it. Fixed by pre-aggregating weekly XP in a
+subquery instead of grouping the outer query at all — see the git history for
+`app/routers/leaderboard.py`. It is why this README recommends testing
+against Postgres at least once before trusting any query that groups or joins,
+not only at the end.
+
+**Python version is pinned** (`backend/.python-version`, and `PYTHON_VERSION`
+in the blueprint): Render's default runtime for new services is a very recent
+CPython for which `pydantic-core` has no prebuilt wheel, and Render's build
+sandbox cannot compile it from source (its Rust/Cargo cache directory is
+read-only there). Pinned to 3.13.5, the exact interpreter this project's tests
+run against.
+
+**Setting this up from scratch:** `render.yaml` declares both services and the
+database and is kept accurate and `render blueprints validate`-clean, but the
+actual deployment here was built with `render services create` /
+`render postgres create` (one Render CLI call per resource, every env var set
+in the same call) rather than a dashboard blueprint apply — the CLI's
+blueprint support only validates a YAML file, it does not create resources
+from it. Whichever path you take, two env vars have a real chicken-and-egg
+constraint: the backend's `CORS_ORIGINS` needs the frontend's exact assigned
+hostname, and the frontend's `NEXT_PUBLIC_API_URL` needs the backend's (baked
+in at *build* time, since Next.js inlines `NEXT_PUBLIC_*` then) — and Render
+does not let you know either hostname before that service's first deploy
+starts. Deploy the backend first, then the frontend with the backend's real
+URL, then update the backend's `CORS_ORIGINS` to the frontend's real URL and
+redeploy it once more (a plain env-var update, not a rebuild).
+
+The demo learner's progress lives in that Postgres instance and persists
+across deploys and cold starts — a free instance sleeps after 15 minutes of
+inactivity, and the `--if-empty` seed guard is exactly what keeps a wake-up
+from resetting it.
 
 ---
 

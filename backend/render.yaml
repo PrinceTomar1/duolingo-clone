@@ -1,11 +1,27 @@
-# Render blueprint for the backend.
+# Render blueprint for the whole application: backend, frontend and database.
 #
-# The live deployment runs here rather than on Railway because that account hit
-# its free-plan resource cap. railway.json and the Procfile are kept alongside
-# this and remain valid -- the app is host-agnostic.
+# Both services are deployed here (not Vercel/Railway) so the project has one
+# platform and one story. The live deployment was actually built by creating
+# each resource individually via the Render CLI rather than by applying this
+# file through Render's dashboard -- `render services create`/`postgres
+# create` support setting every env var in one shot, while a CLI blueprint
+# apply does not (`render blueprints` only validates a YAML file, it does not
+# create resources from it). This file is kept as the accurate, reproducible
+# declaration of that same architecture.
+#
+# A real chicken-and-egg constraint worth knowing before applying this from a
+# dashboard "New Blueprint Instance": the backend's CORS_ORIGINS needs the
+# frontend's exact `.onrender.com` hostname, and the frontend's
+# NEXT_PUBLIC_API_URL needs the backend's (baked in at build time, since
+# Next.js inlines NEXT_PUBLIC_* then). Render assigns that hostname's random
+# suffix only once the *first* deploy of a service starts -- it is not
+# knowable in advance, and is not guaranteed to be the bare `--name` with no
+# suffix even the first time a name is used. After the first blueprint apply,
+# read the two real URLs from the Render dashboard and update the two env
+# vars below to match, then redeploy each service once.
 services:
   - type: web
-    name: duolingo-clone-api
+    name: duolingo-clone-backend
     runtime: python
     plan: free
     region: singapore
@@ -25,7 +41,8 @@ services:
       # falls back to compiling it from source via Rust/maturin, which fails
       # in Render's build sandbox (its Cargo registry cache directory is
       # read-only there). 3.13.5 is the exact interpreter this project's test
-      # suite and clean-install checks run against locally.
+      # suite and clean-install checks run against locally. Also set via
+      # backend/.python-version, which takes effect even outside a blueprint.
       - key: PYTHON_VERSION
         value: "3.13.5"
       - key: DEBUG
@@ -46,10 +63,26 @@ services:
         fromDatabase:
           name: duolingo-clone-db
           property: connectionString
-      # The deployed frontend's production alias on Vercel. Preview deploys get
-      # random subdomains, so add them here if you need one to reach this API.
+      # The deployed frontend's real hostname. See the chicken-and-egg note
+      # above -- update this to match after the frontend's first deploy.
       - key: CORS_ORIGINS
-        value: https://duolingo-clone-princetomar70276-4850s-projects.vercel.app
+        value: https://duolingo-clone-frontend-tg3r.onrender.com
+
+  - type: web
+    name: duolingo-clone-frontend
+    runtime: node
+    plan: free
+    region: singapore
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    # `next start` needs an explicit port; Render only routes to $PORT.
+    startCommand: npx next start -p $PORT
+    envVars:
+      # Next.js inlines NEXT_PUBLIC_* at *build* time, so this must be the
+      # backend's real URL before this service's build runs -- not a
+      # reference resolved later. See the chicken-and-egg note above.
+      - key: NEXT_PUBLIC_API_URL
+        value: https://duolingo-clone-backend-w886.onrender.com
 
 databases:
   - name: duolingo-clone-db

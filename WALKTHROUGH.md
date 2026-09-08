@@ -161,9 +161,14 @@ handled.
 
 In the order things would actually break:
 
-1. **SQLite → Postgres.** A `DATABASE_URL` change. The models and migrations are
-   dialect-agnostic apart from the SQLite `foreign_keys` pragma, which is already
-   conditional on the URL scheme.
+1. **SQLite → Postgres.** This actually happened — the deployed backend runs on
+   Postgres (see the README's Deployment section) because Render's free web
+   services have no persistent disk. It was not a bare `DATABASE_URL` change:
+   the leaderboard query grouped by `User.id` while selecting whole
+   `User`/`UserStats` rows, which SQLite tolerates and Postgres correctly
+   rejects. Fixed by pre-aggregating in a subquery instead. Everything else —
+   models, migrations, the SQLite `foreign_keys` pragma already conditional on
+   the URL scheme — needed no change.
 
 2. **The leaderboard breaks first.** `GET /leaderboard` groups over `daily_xp`
    for every user on every request — a growing scan. Fix: leagues of ~30 people

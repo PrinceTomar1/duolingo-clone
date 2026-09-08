@@ -20,6 +20,14 @@ services:
       uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
+      # Pinned because pydantic-core has no prebuilt wheel for very new
+      # CPython releases (Render's post-2026-02-11 default is 3.14.3): pip
+      # falls back to compiling it from source via Rust/maturin, which fails
+      # in Render's build sandbox (its Cargo registry cache directory is
+      # read-only there). 3.13.5 is the exact interpreter this project's test
+      # suite and clean-install checks run against locally.
+      - key: PYTHON_VERSION
+        value: "3.13.5"
       - key: DEBUG
         value: "false"
       # The day simulator stays on deliberately, but as its own explicit switch

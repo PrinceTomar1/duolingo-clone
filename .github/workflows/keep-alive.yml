@@ -1,0 +1,42 @@
+name: Keep Render services awake
+
+# Render's free plan puts a web service to sleep after 15 minutes with no
+# incoming requests, and a cold start can take anywhere from ~30 seconds to a
+# few minutes. A reviewer who opens the link during that window sees nothing
+# load and reasonably concludes the deployment is broken -- which is exactly
+# what happened here. The frontend and backend are two independent Render
+# services, each with its own 15-minute timer, so both need their own ping;
+# warming one does not warm the other.
+#
+# Every 5 minutes leaves a wide safety margin under the 15-minute threshold
+# even if a run is delayed by GitHub's own scheduler, which does happen under
+# load. This is a public repo, so scheduled-workflow minutes are free.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping frontend
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 200 --retry 2 --retry-delay 5 \
+            https://duolingo-clone-frontend-tg3r.onrender.com/)
+          echo "frontend responded: $code"
+          if [ "$code" -lt 200 ] || [ "$code" -ge 500 ]; then
+            echo "::error::Frontend did not respond healthily (HTTP $code)"
+            exit 1
+          fi
+
+      - name: Ping backend
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 200 --retry 2 --retry-delay 5 \
+            https://duolingo-clone-backend-w886.onrender.com/health)
+          echo "backend responded: $code"
+          if [ "$code" -ne 200 ]; then
+            echo "::error::Backend health check failed (HTTP $code)"
+            exit 1
+          fi

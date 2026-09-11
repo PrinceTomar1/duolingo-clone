@@ -44,6 +44,14 @@ export interface CoursePath {
   total_crowns: number;
 }
 
+/** One row of the language picker. */
+export interface CourseSummary {
+  id: number;
+  title: string;
+  from_language: string;
+  to_language: string;
+}
+
 /**
  * The per-type shape of `Exercise.payload`.
  *

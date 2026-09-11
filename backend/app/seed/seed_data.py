@@ -24,7 +24,7 @@ from app.models.progress import LessonAttempt, UserProgress
 from app.models.stats import DailyXp, UserStats
 from app.models.user import User
 from app.seed import content
-from app.seed.exercise_factory import build_lesson_exercises
+from app.seed.exercise_factory import LanguageProfile, build_lesson_exercises
 from app.services import gamification_service, path_service
 from app.services.achievement_service import sync_achievements
 
@@ -52,30 +52,36 @@ _RIVALS = [
 ]
 
 
-def _upsert_course(db: Session) -> Course:
-    """Create or update the single course row."""
+def _upsert_course(db: Session, spec: content.CourseContent) -> Course:
+    """Create or update one course row."""
     course = db.scalar(
         select(Course).where(
-            Course.from_language == content.COURSE_FROM_LANGUAGE,
-            Course.to_language == content.COURSE_TO_LANGUAGE,
+            Course.from_language == spec.from_language,
+            Course.to_language == spec.to_language,
         )
     )
     if course is None:
         course = Course(
-            from_language=content.COURSE_FROM_LANGUAGE,
-            to_language=content.COURSE_TO_LANGUAGE,
-            title=content.COURSE_TITLE,
+            from_language=spec.from_language,
+            to_language=spec.to_language,
+            title=spec.title,
         )
         db.add(course)
         db.flush()
-    course.title = content.COURSE_TITLE
+    course.title = spec.title
     return course
 
 
-def _upsert_exercises(db: Session, lesson: Lesson, skill: content.SkillContent, index: int) -> None:
+def _upsert_exercises(
+    db: Session,
+    lesson: Lesson,
+    skill: content.SkillContent,
+    index: int,
+    profile: LanguageProfile,
+) -> None:
     """Regenerate a lesson's exercises, matching existing rows by position."""
     existing = {row.order_index: row for row in lesson.exercises}
-    for spec in build_lesson_exercises(skill, index):
+    for spec in build_lesson_exercises(skill, index, profile):
         row = existing.pop(spec["order_index"], None)
         if row is None:
             row = Exercise(lesson_id=lesson.id, order_index=spec["order_index"])
@@ -91,9 +97,9 @@ def _upsert_exercises(db: Session, lesson: Lesson, skill: content.SkillContent, 
         db.delete(stale)
 
 
-def _upsert_content(db: Session, course: Course) -> None:
+def _upsert_content(db: Session, course: Course, spec: content.CourseContent) -> None:
     """Write the full unit -> skill -> lesson -> exercise tree."""
-    for unit_index, unit_spec in enumerate(content.UNITS):
+    for unit_index, unit_spec in enumerate(spec.units):
         unit = db.scalar(
             select(Unit).where(Unit.course_id == course.id, Unit.order_index == unit_index)
         )
@@ -129,7 +135,7 @@ def _upsert_content(db: Session, course: Course) -> None:
                 lesson.xp_reward = settings.base_lesson_xp
                 db.flush()
                 db.refresh(lesson)
-                _upsert_exercises(db, lesson, skill_spec, lesson_index)
+                _upsert_exercises(db, lesson, skill_spec, lesson_index, spec.profile)
 
 
 def _upsert_achievements(db: Session) -> None:
@@ -279,7 +285,18 @@ def _seed_rivals(db: Session, course: Course) -> None:
         stats.hearts = settings.max_hearts
         stats.hearts_updated_at = clock.now()
         # Crowns roughly track XP, which keeps each rival's profile self-consistent.
-        for skill in db.scalars(select(Skill).order_by(Skill.id).limit(total_xp // 400 + 1)).all():
+        # Scoped to this course explicitly (via its units) -- with a second course
+        # now seeded, an unscoped `select(Skill)` would silently start pulling in
+        # skills that happen to share the low end of the id range once a course
+        # with fewer skills were ever seeded first.
+        rival_skills = db.scalars(
+            select(Skill)
+            .join(Unit, Unit.id == Skill.unit_id)
+            .where(Unit.course_id == course.id)
+            .order_by(Skill.id)
+            .limit(total_xp // 400 + 1)
+        ).all()
+        for skill in rival_skills:
             db.add(
                 UserProgress(
                     user_id=user.id,
@@ -296,13 +313,24 @@ def _seed_rivals(db: Session, course: Course) -> None:
 
 
 def seed(db: Session) -> None:
-    """Run every seeding step in dependency order."""
-    course = _upsert_course(db)
-    _upsert_content(db, course)
+    """Run every seeding step in dependency order.
+
+    Every course in ``content.COURSES`` gets its content upserted, but the demo
+    learner's narrative (streak, crowns, rivals) is built only on the first --
+    a second course starts a learner exactly where a real new course would:
+    with content to learn and no manufactured history.
+    """
+    primary_course: Course | None = None
+    for course_spec in content.COURSES:
+        course = _upsert_course(db, course_spec)
+        _upsert_content(db, course, course_spec)
+        if primary_course is None:
+            primary_course = course
+    assert primary_course is not None
     _upsert_achievements(db)
     db.flush()
-    _seed_demo_learner(db, course)
-    _seed_rivals(db, course)
+    _seed_demo_learner(db, primary_course)
+    _seed_rivals(db, primary_course)
     db.commit()
 
 
@@ -328,13 +356,15 @@ def main() -> None:
             print("Database already seeded; leaving learner progress untouched.")
             return
         seed(db)
-        course = db.scalar(select(Course))
-        assert course is not None
+        courses = db.scalars(select(Course)).all()
+        assert courses
         lessons = db.scalar(select(Lesson.id))
+        course_labels = ", ".join(
+            "{} -> {}".format(course.from_language, course.to_language) for course in courses
+        )
         print(
-            "Seeded {} -> {}: {} units, {} skills, {} lessons, {} exercises, {} users.".format(
-                course.from_language,
-                course.to_language,
+            "Seeded {}: {} units, {} skills, {} lessons, {} exercises, {} users.".format(
+                course_labels,
                 len(db.scalars(select(Unit.id)).all()),
                 len(db.scalars(select(Skill.id)).all()),
                 len(db.scalars(select(Lesson.id)).all()),

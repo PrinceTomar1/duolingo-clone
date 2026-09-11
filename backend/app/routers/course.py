@@ -7,16 +7,25 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.course import Course, Skill
 from app.models.user import User
-from app.schemas.course import CoursePathRead, SkillRead, UnitRead
+from app.schemas.course import CoursePathRead, CourseSummaryRead, SkillRead, UnitRead
 from app.services import path_service
 from app.services.exceptions import NotFoundError
 
 router = APIRouter(prefix="/course", tags=["course"])
 
 
+@router.get("/list", response_model=list[CourseSummaryRead])
+def read_courses(db: Session = Depends(get_db)) -> list[Course]:
+    """Every course available to learn, for the language picker."""
+    return list(db.scalars(select(Course).order_by(Course.id)).all())
+
+
 @router.get("/path", response_model=CoursePathRead)
 def read_course_path(
     user_id: int = Query(description="Learner whose progress the path is computed for"),
+    course_id: int | None = Query(
+        default=None, description="Which course to show. Defaults to the first seeded course."
+    ),
     db: Session = Depends(get_db),
 ) -> CoursePathRead:
     """Return every unit and skill with this learner's per-skill state.
@@ -30,7 +39,10 @@ def read_course_path(
     if db.get(User, user_id) is None:
         raise NotFoundError("User not found")
 
-    course = db.scalar(select(Course).order_by(Course.id))
+    if course_id is not None:
+        course = db.get(Course, course_id)
+    else:
+        course = db.scalar(select(Course).order_by(Course.id))
     if course is None:
         raise NotFoundError("No course has been seeded yet.")
 

@@ -12,6 +12,7 @@
 
 import type {
   CoursePath,
+  CourseSummary,
   CompletionSummary,
   AnswerResult,
   Leaderboard,
@@ -121,7 +122,12 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 }
 
 export const api = {
-  coursePath: (userId: number) => request<CoursePath>(`/course/path?user_id=${userId}`),
+  coursePath: (userId: number, courseId?: number) =>
+    request<CoursePath>(
+      `/course/path?user_id=${userId}${courseId !== undefined ? `&course_id=${courseId}` : ""}`,
+    ),
+
+  courses: () => request<CourseSummary[]>("/course/list"),
 
   skillLessonIds: (skillId: number) => request<number[]>(`/course/skills/${skillId}/lessons`),
 

@@ -320,7 +320,8 @@ docs at `/docs`.
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/course/path?user_id=` | Units → skills with per-skill `state` (`locked \| available \| in_progress \| completed`) and crowns, **computed server-side**. |
+| `GET` | `/course/list` | Every seeded course (id, title, language pair) — what the language picker renders. |
+| `GET` | `/course/path?user_id=&course_id=` | Units → skills with per-skill `state` (`locked \| available \| in_progress \| completed`) and crowns, **computed server-side**. `course_id` is optional, defaulting to the first seeded course. |
 | `GET` | `/course/skills/{skill_id}/lessons` | Ordered lesson ids, so tapping a node can jump to the next unplayed lesson without downloading every lesson. |
 | `GET` | `/lessons/{lesson_id}` | Exercises **without** `correct_answer` or `explanation`. |
 | `POST` | `/lessons/{lesson_id}/start` | Opens an attempt. 403 if the skill is locked or hearts are empty. |
@@ -375,19 +376,49 @@ to 0 on the second. Nothing was incremented or decremented — the same
 
 `python -m app.seed.seed_data` — idempotent, safe to re-run.
 
-- 1 course (English → Spanish), **3 units, 12 skills, 29 lessons, 261 exercises**
-  using all five exercise types with real Spanish vocabulary.
+- 2 courses (English → Spanish, English → French). Spanish carries the full
+  demo narrative below: **3 units, 12 skills, 29 lessons, 261 exercises**.
+  French is a second, genuinely independent course proving the picker and the
+  per-course progress model actually work, not a hardcoded placeholder: **2
+  units, 4 skills, 8 lessons, 72 exercises**, all five exercise types, real
+  French vocabulary. Switch between them from the picker next to the course
+  title on the Learn screen; a learner's progress in one never touches the
+  other, because `UserProgress` is keyed on `skill_id`, which already implies
+  its course through `skill -> unit -> course`.
 - Demo learner **`prince`**: Unit 1 complete, mid Unit 2, **1,240 XP**, a **7-day
   streak**, 5 hearts, 500 gems, 14 days of `daily_xp` history summing to exactly
-  1,240.
+  1,240 -- all of it on the Spanish course. French starts fresh for every
+  learner, the same way a second real Duolingo course would: no manufactured
+  history, just content to learn.
 - 9 other learners so the leaderboard has a real field (`prince` places 5th).
 - 6 achievements, **3 unlocked** — and unlocked *by the sync service reading the
   seeded state*, not hardcoded.
 
 Content lives in three separate modules: `seed/content.py` (vocabulary and
-sentences, pure data), `seed/exercise_factory.py` (deterministic generation of
-the five shapes), `seed/seed_data.py` (idempotent upsert). A content edit cannot
-break the seeding logic.
+sentences, pure data, one `CourseContent` per course), `seed/exercise_factory.py`
+(deterministic generation of the five shapes, parameterized by a
+`LanguageProfile` so nothing in it is hardcoded to Spanish), `seed/seed_data.py`
+(idempotent upsert, looped over every course in `content.COURSES`). A content
+edit -- including adding a third course -- cannot break the seeding logic.
+
+Adding the second course surfaced a real concurrency bug that had nothing to
+do with languages: `path_service.sync_unlock_flags` read a learner's
+`user_progress` rows, then inserted a new one for any newly-unlocked skill --
+a plain SELECT-then-INSERT. Two near-simultaneous first-time unlocks (a
+double-tap, two open tabs, or React's dev-mode double effect, which is what
+actually surfaced it) could both see no row and both try to insert, and the
+loser hit the `(user_id, skill_id)` unique constraint as an unhandled 500.
+Fixed with a `SAVEPOINT` around the insert batch: on conflict, the batch rolls
+back and the loser re-reads what the winner already committed instead of
+crashing a request that did nothing wrong. Verified with 8 real concurrent
+`POST /lessons/{id}/start` calls for a brand-new learner's first skill against
+a live server -- all 8 returned 201, and exactly one `user_progress` row
+exists afterward. Not encoded as an automated test: the suite's SQLite fixture
+shares one connection across a test (`StaticPool`), which serializes access to
+it and cannot reproduce a genuine thread race the way it happens against a
+live server -- the same reason the original lesson-completion race (the
+`_claim_attempt` atomic UPDATE) is documented and live-verified rather than
+covered by a threaded pytest.
 
 ---
 
@@ -563,10 +594,11 @@ Things I decided rather than asked about, and what I traded away.
     which keeps `exercises_answered` and the accuracy figure exact.
 
 11. **Explicitly mocked, and labelled as such in the UI:** the guidebook button
-    (disabled, not just styled to look inert), streak freeze, unlimited hearts
-    in the shop, and every course but Spanish in the home page's language
-    picker ("Coming soon"). Each says plainly that it is not part of the
-    build rather than pretending to work. Everything else on screen is real:
+    (disabled, not just styled to look inert), streak freeze, and unlimited
+    hearts in the shop. Each says plainly that it is not part of the build
+    rather than pretending to work. The language picker itself is no longer
+    on this list -- French is a second real course now, not a placeholder;
+    see "Seed data" above. Everything else on screen is real:
     the quests page, including the two weekly quests, reads `weekly_xp`
     (summed from the last seven ledger days) and the streak; the speaker
     button on a lesson genuinely speaks the Spanish phrase aloud via the

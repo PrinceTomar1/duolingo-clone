@@ -9,6 +9,7 @@ without a data migration.
 from dataclasses import dataclass
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.course import Course, Skill, Unit
@@ -118,6 +119,11 @@ def sync_unlock_flags(db: Session, course: Course, user_id: int) -> None:
     must answer "may this learner open this skill?" without rebuilding the whole
     path. ``build_path`` remains the authority; this only writes down its answer.
     """
+    unlocked_by_skill = {
+        node.skill.id: node.state is not SkillState.LOCKED
+        for unit_node in build_path(db, course, user_id)
+        for node in unit_node.skills
+    }
     # Every existing row is loaded once rather than queried per skill: twelve
     # skills would otherwise mean twelve round trips on every lesson start.
     rows = {
@@ -126,18 +132,41 @@ def sync_unlock_flags(db: Session, course: Course, user_id: int) -> None:
             select(UserProgress).where(UserProgress.user_id == user_id)
         ).all()
     }
-    for unit_node in build_path(db, course, user_id):
-        for node in unit_node.skills:
-            unlocked = node.state is not SkillState.LOCKED
-            row = rows.get(node.skill.id)
-            if row is None:
-                if not unlocked:
-                    continue
-                row = UserProgress(
-                    user_id=user_id, skill_id=node.skill.id, crowns=0, lessons_completed=0
-                )
-                db.add(row)
-                rows[node.skill.id] = row
+    missing = [
+        skill_id
+        for skill_id, unlocked in unlocked_by_skill.items()
+        if unlocked and skill_id not in rows
+    ]
+    if missing:
+        # A first-time unlock is a SELECT-then-INSERT, and two requests can
+        # race it: a double-tap, two open tabs, or (the case that actually
+        # surfaced this) React's dev-mode double effect. Both see "no row
+        # yet" and both try to insert -- the loser hits the
+        # (user_id, skill_id) unique constraint and, unguarded, 500s a
+        # request that did nothing wrong. A savepoint scopes that failure to
+        # just this batch of inserts: on conflict, the whole batch rolls back
+        # and the loser simply re-reads what the winner already committed.
+        try:
+            with db.begin_nested():
+                for skill_id in missing:
+                    db.add(
+                        UserProgress(
+                            user_id=user_id, skill_id=skill_id, crowns=0, lessons_completed=0
+                        )
+                    )
+                db.flush()
+        except IntegrityError:
+            pass
+        rows = {
+            row.skill_id: row
+            for row in db.scalars(
+                select(UserProgress).where(UserProgress.user_id == user_id)
+            ).all()
+        }
+
+    for skill_id, unlocked in unlocked_by_skill.items():
+        row = rows.get(skill_id)
+        if row is not None:
             row.is_unlocked = unlocked
     # Flushed so callers that immediately re-query see these rows; the session
     # runs with autoflush off, so a pending row would otherwise be invisible.

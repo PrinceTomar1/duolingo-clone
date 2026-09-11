@@ -8,16 +8,20 @@ import { Icon } from "@/components/ui/Icon";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { api } from "@/lib/api";
 import { useSessionStore } from "@/store/useSessionStore";
-import type { CoursePath } from "@/types/api";
+import type { CoursePath, CourseSummary } from "@/types/api";
 
-/**
- * Courses a real course picker would list. Only Spanish has content behind
- * it -- the brief is explicit that one seeded language is enough -- so the
- * rest are shown, honestly, as not-yet-built rather than left off entirely.
- * A learner opening this should see a deliberate choice, not wonder whether
- * more languages exist and the app just failed to load them.
- */
-const OTHER_COURSES = ["French", "German", "Japanese", "Italian"];
+/** Which course to show. Not per-learner progress -- just which path is on screen. */
+const ACTIVE_COURSE_KEY = "duo-active-course-id";
+
+function readStoredCourseId(): number | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(ACTIVE_COURSE_KEY);
+    return raw ? Number(raw) : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * The Learn screen.
@@ -30,18 +34,38 @@ export default function LearnPage() {
   const user = useSessionStore((state) => state.user);
   const sessionError = useSessionStore((state) => state.error);
   const [path, setPath] = useState<CoursePath | null>(null);
+  const [courses, setCourses] = useState<CourseSummary[]>([]);
+  const [courseId, setCourseId] = useState<number | null>(readStoredCourseId);
   const [error, setError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+
+  // Loaded once, lazily, only if the picker is opened -- most visits never
+  // need the full course list, just whichever one is already selected.
+  useEffect(() => {
+    if (!pickerOpen || courses.length > 0) return;
+    api.courses().then(setCourses);
+  }, [pickerOpen, courses.length]);
 
   useEffect(() => {
     if (!user) return;
     api
-      .coursePath(user.id)
+      .coursePath(user.id, courseId ?? undefined)
       .then(setPath)
       .catch((cause: unknown) =>
         setError(cause instanceof Error ? cause.message : "Could not load the course"),
       );
-  }, [user]);
+  }, [user, courseId]);
+
+  function selectCourse(id: number): void {
+    setPickerOpen(false);
+    setCourseId(id);
+    try {
+      window.localStorage.setItem(ACTIVE_COURSE_KEY, String(id));
+    } catch {
+      // A private-browsing tab that refuses storage still switches for this
+      // load; it just will not stick past a refresh.
+    }
+  }
 
   if (sessionError ?? error) return <ErrorNotice message={sessionError ?? error ?? ""} />;
   if (!user || !path) return <PathSkeleton />;
@@ -62,20 +86,26 @@ export default function LearnPage() {
           </button>
           {pickerOpen && (
             <ul className="absolute right-0 top-full z-20 mt-1 w-48 rounded-2xl border-2 border-swan bg-snow p-2 shadow-lg dark:border-night-border dark:bg-night-raised">
-              <li>
-                <span className="flex items-center justify-between rounded-xl bg-macaw/10 px-3 py-2 text-sm font-extrabold text-macaw">
-                  {path.to_language}
-                  <Icon name="check" size={16} />
-                </span>
-              </li>
-              {OTHER_COURSES.map((language) => (
-                <li key={language}>
-                  <span className="flex items-center justify-between px-3 py-2 text-sm font-bold text-hare">
-                    {language}
-                    <span className="text-xs uppercase tracking-wide">Coming soon</span>
-                  </span>
-                </li>
-              ))}
+              {courses.length === 0 ? (
+                <li className="px-3 py-2 text-sm font-bold text-wolf">Loading…</li>
+              ) : (
+                courses.map((course) => {
+                  const isActive = course.id === path.course_id;
+                  return (
+                    <li key={course.id}>
+                      <button
+                        type="button"
+                        onClick={() => selectCourse(course.id)}
+                        disabled={isActive}
+                        className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm font-extrabold text-wolf transition-colors hover:bg-polar disabled:text-macaw disabled:hover:bg-macaw/10 dark:hover:bg-night-raised"
+                      >
+                        {course.to_language}
+                        {isActive && <Icon name="check" size={16} />}
+                      </button>
+                    </li>
+                  );
+                })
+              )}
             </ul>
           )}
         </div>

@@ -18,7 +18,7 @@ const nunito = Nunito({
 });
 
 export const metadata: Metadata = {
-  title: "Duolingo Clone — Learn Spanish",
+  title: "Duolingo Clone — Learn a Language",
   description: "A hand-built Duolingo clone: skill path, five exercise types, hearts, streaks and XP.",
 };
 

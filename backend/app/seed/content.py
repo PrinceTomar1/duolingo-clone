@@ -1,28 +1,37 @@
-"""Declarative course content for the English -> Spanish course.
+"""Declarative course content: vocabulary and sentence pairs, per course.
 
 Content is data, not code: this module holds only vocabulary and sentence pairs.
 Turning that data into the five exercise shapes is ``exercise_factory``'s job,
 and writing it to the database is ``seed_data``'s. Keeping the three apart means
 a content edit never risks the seeding logic.
+
+Two courses live here (Spanish and French), each pairing its vocabulary with a
+``LanguageProfile`` -- the handful of language-specific facts (what to call the
+language in a generated prompt, which words are articles worth stripping from a
+multiple-choice option, which words are too grammatical to make a good
+fill-in-the-blank target) that ``exercise_factory`` needs and would otherwise
+have had hardcoded to Spanish.
 """
 
 from dataclasses import dataclass, field
 
+from app.seed.exercise_factory import LanguageProfile
+
 
 @dataclass(frozen=True)
 class WordPair:
-    """One vocabulary item: the Spanish term and its English meaning."""
+    """One vocabulary item: the course's target-language term and its English meaning."""
 
-    es: str
-    en: str
+    target: str
+    english: str
 
 
 @dataclass(frozen=True)
 class SentencePair:
     """One translatable sentence in both languages."""
 
-    es: str
-    en: str
+    target: str
+    english: str
 
 
 @dataclass(frozen=True)
@@ -47,12 +56,29 @@ class UnitContent:
     skills: list[SkillContent] = field(default_factory=list)
 
 
-COURSE_TITLE = "Spanish"
-COURSE_FROM_LANGUAGE = "English"
-COURSE_TO_LANGUAGE = "Spanish"
+@dataclass(frozen=True)
+class CourseContent:
+    """One full course: its language pairing, its content, and how to drill it."""
+
+    title: str
+    from_language: str
+    to_language: str
+    profile: LanguageProfile
+    units: list[UnitContent]
 
 
-UNITS: list[UnitContent] = [
+SPANISH_PROFILE = LanguageProfile(
+    name="Spanish",
+    stop_words=frozenset(
+        {
+            "el", "la", "los", "las", "un", "una", "unos", "unas", "y", "o", "de", "en",
+            "a", "al", "del", "es", "son", "mi", "su", "con", "que", "hay",
+        }
+    ),
+    articles=("el ", "la ", "los ", "las "),
+)
+
+SPANISH_UNITS: list[UnitContent] = [
     UnitContent(
         title="Unit 1",
         description="Form basic sentences, greet people",
@@ -399,6 +425,164 @@ UNITS: list[UnitContent] = [
         ],
     ),
 ]
+
+SPANISH_COURSE = CourseContent(
+    title="Spanish",
+    from_language="English",
+    to_language="Spanish",
+    profile=SPANISH_PROFILE,
+    units=SPANISH_UNITS,
+)
+
+
+FRENCH_PROFILE = LanguageProfile(
+    name="French",
+    # French articles/function words that make poor multiple-choice or
+    # fill-blank targets, mirroring the Spanish list's role.
+    stop_words=frozenset(
+        {
+            "le", "la", "les", "l'", "un", "une", "des", "et", "ou", "de", "du",
+            "à", "au", "aux", "est", "sont", "mon", "ma", "son", "sa", "avec", "que",
+        }
+    ),
+    articles=("le ", "la ", "les ", "l'"),
+)
+
+FRENCH_UNITS: list[UnitContent] = [
+    UnitContent(
+        title="Unit 1",
+        description="Say hello, meet people",
+        color_hex="#CE82FF",
+        skills=[
+            SkillContent(
+                title="Greetings",
+                icon="hand",
+                lesson_count=2,
+                vocabulary=[
+                    WordPair("bonjour", "hello"),
+                    WordPair("au revoir", "goodbye"),
+                    WordPair("merci", "thank you"),
+                    WordPair("s'il vous plaît", "please"),
+                    WordPair("bonsoir", "good evening"),
+                    WordPair("bonne nuit", "good night"),
+                    WordPair("pardon", "sorry"),
+                    WordPair("à bientôt", "see you soon"),
+                    WordPair("oui", "yes"),
+                    WordPair("non", "no"),
+                ],
+                sentences=[
+                    SentencePair("Bonjour, merci.", "Hello, thank you."),
+                    SentencePair("Au revoir, à bientôt.", "Goodbye, see you soon."),
+                    SentencePair("Pardon, s'il vous plaît.", "Sorry, please."),
+                    SentencePair("Bonsoir, bonne nuit.", "Good evening, good night."),
+                    SentencePair("Oui, merci beaucoup.", "Yes, thank you very much."),
+                    SentencePair("Bonjour, comment ça va?", "Hello, how are you?"),
+                    SentencePair("Non, merci.", "No, thank you."),
+                    SentencePair("Bonjour madame.", "Hello madam."),
+                ],
+            ),
+            SkillContent(
+                title="Basics 1",
+                icon="book",
+                lesson_count=2,
+                vocabulary=[
+                    WordPair("l'homme", "the man"),
+                    WordPair("la femme", "the woman"),
+                    WordPair("le garçon", "the boy"),
+                    WordPair("la fille", "the girl"),
+                    WordPair("je", "I"),
+                    WordPair("tu", "you"),
+                    WordPair("je suis", "I am"),
+                    WordPair("tu es", "you are"),
+                    WordPair("et", "and"),
+                    WordPair("un", "a"),
+                ],
+                sentences=[
+                    SentencePair("Je suis un homme.", "I am a man."),
+                    SentencePair("Tu es une femme.", "You are a woman."),
+                    SentencePair("Le garçon et la fille.", "The boy and the girl."),
+                    SentencePair("Je suis un garçon.", "I am a boy."),
+                    SentencePair("La femme et l'homme.", "The woman and the man."),
+                    SentencePair("Tu es un garçon.", "You are a boy."),
+                    SentencePair("Je suis une fille.", "I am a girl."),
+                    SentencePair("L'homme est grand.", "The man is tall."),
+                ],
+            ),
+        ],
+    ),
+    UnitContent(
+        title="Unit 2",
+        description="Order food, count numbers",
+        color_hex="#FF9600",
+        skills=[
+            SkillContent(
+                title="Food",
+                icon="apple",
+                lesson_count=2,
+                vocabulary=[
+                    WordPair("la nourriture", "the food"),
+                    WordPair("le petit-déjeuner", "breakfast"),
+                    WordPair("le déjeuner", "lunch"),
+                    WordPair("le dîner", "dinner"),
+                    WordPair("le café", "the coffee"),
+                    WordPair("l'eau", "the water"),
+                    WordPair("le pain", "the bread"),
+                    WordPair("la pomme", "the apple"),
+                    WordPair("je veux", "I want"),
+                    WordPair("tu veux", "you want"),
+                ],
+                sentences=[
+                    SentencePair("Je veux le petit-déjeuner.", "I want breakfast."),
+                    SentencePair("Tu veux du café?", "Do you want coffee?"),
+                    SentencePair("Le dîner a du pain.", "Dinner has bread."),
+                    SentencePair("Je mange une pomme.", "I eat an apple."),
+                    SentencePair("Je bois de l'eau.", "I drink water."),
+                    SentencePair("Le déjeuner est à midi.", "Lunch is at noon."),
+                    SentencePair("Je veux la nourriture maintenant.", "I want the food now."),
+                    SentencePair("Je bois du café le matin.", "I drink coffee in the morning."),
+                ],
+            ),
+            SkillContent(
+                title="Numbers",
+                icon="hash",
+                lesson_count=2,
+                vocabulary=[
+                    WordPair("un", "one"),
+                    WordPair("deux", "two"),
+                    WordPair("trois", "three"),
+                    WordPair("quatre", "four"),
+                    WordPair("cinq", "five"),
+                    WordPair("six", "six"),
+                    WordPair("sept", "seven"),
+                    WordPair("huit", "eight"),
+                    WordPair("neuf", "nine"),
+                    WordPair("dix", "ten"),
+                ],
+                sentences=[
+                    SentencePair("J'ai deux mains.", "I have two hands."),
+                    SentencePair("Trois plus quatre font sept.", "Three plus four is seven."),
+                    SentencePair("J'ai dix doigts.", "I have ten fingers."),
+                    SentencePair("Elle a cinq pommes.", "She has five apples."),
+                    SentencePair("Un, deux, trois.", "One, two, three."),
+                    SentencePair("Il a six frères.", "He has six brothers."),
+                    SentencePair("Neuf est presque dix.", "Nine is almost ten."),
+                    SentencePair("J'ai huit ans.", "I am eight years old."),
+                ],
+            ),
+        ],
+    ),
+]
+
+FRENCH_COURSE = CourseContent(
+    title="French",
+    from_language="English",
+    to_language="French",
+    profile=FRENCH_PROFILE,
+    units=FRENCH_UNITS,
+)
+
+
+COURSES: list[CourseContent] = [SPANISH_COURSE, FRENCH_COURSE]
 
 
 ACHIEVEMENTS: list[dict[str, object]] = [

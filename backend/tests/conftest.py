@@ -70,7 +70,7 @@ def course(db: Session) -> Course:
     db.add(course)
     db.flush()
 
-    for unit_index, unit_spec in enumerate(content.UNITS[:2]):
+    for unit_index, unit_spec in enumerate(content.SPANISH_UNITS[:2]):
         unit = Unit(
             course_id=course.id,
             order_index=unit_index,
@@ -94,7 +94,7 @@ def course(db: Session) -> Course:
                 lesson = Lesson(skill_id=skill.id, order_index=lesson_index, xp_reward=10)
                 db.add(lesson)
                 db.flush()
-                for spec in build_lesson_exercises(skill_spec, lesson_index):
+                for spec in build_lesson_exercises(skill_spec, lesson_index, content.SPANISH_PROFILE):
                     db.add(
                         Exercise(
                             lesson_id=lesson.id,

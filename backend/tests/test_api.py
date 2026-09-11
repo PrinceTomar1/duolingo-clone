@@ -55,6 +55,41 @@ class TestCoursePath:
     def test_user_id_is_required(self, client: TestClient) -> None:
         assert client.get("/api/v1/course/path").status_code == 422
 
+    def test_course_id_selects_a_different_course(
+        self, client: TestClient, db: Session, user: User
+    ) -> None:
+        from app.seed import content, seed_data
+
+        french = seed_data._upsert_course(db, content.FRENCH_COURSE)
+        seed_data._upsert_content(db, french, content.FRENCH_COURSE)
+        db.commit()
+
+        body = client.get(
+            "/api/v1/course/path", params={"user_id": user.id, "course_id": french.id}
+        ).json()
+        assert body["course_id"] == french.id
+        assert body["to_language"] == "French"
+        assert body["units"][0]["skills"][0]["title"] == "Greetings"
+
+    def test_unknown_course_id_is_404(self, client: TestClient, user: User) -> None:
+        response = client.get(
+            "/api/v1/course/path", params={"user_id": user.id, "course_id": 999_999}
+        )
+        assert response.status_code == 404
+
+
+class TestCourseList:
+    def test_lists_every_seeded_course(self, client: TestClient, db: Session, course: Course) -> None:
+        from app.seed import content, seed_data
+
+        french = seed_data._upsert_course(db, content.FRENCH_COURSE)
+        seed_data._upsert_content(db, french, content.FRENCH_COURSE)
+        db.commit()
+
+        body = client.get("/api/v1/course/list").json()
+        languages = {row["to_language"] for row in body}
+        assert languages == {"Spanish", "French"}
+
 
 class TestLessonFetch:
     def test_never_returns_the_answer_key(

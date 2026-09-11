@@ -39,3 +39,12 @@ class CoursePathRead(BaseModel):
     to_language: str
     units: list[UnitRead]
     total_crowns: int = Field(description="Crowns earned across the entire course")
+
+
+class CourseSummaryRead(ORMModel):
+    """One row of the language picker -- enough to list and select a course."""
+
+    id: int
+    title: str
+    from_language: str
+    to_language: str

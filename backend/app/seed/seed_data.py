@@ -312,13 +312,16 @@ def _seed_rivals(db: Session, course: Course) -> None:
         sync_achievements(db, user.id)
 
 
-def seed(db: Session) -> None:
-    """Run every seeding step in dependency order.
+def _sync_content(db: Session) -> Course:
+    """Upsert every course's content and the achievement definitions.
 
-    Every course in ``content.COURSES`` gets its content upserted, but the demo
-    learner's narrative (streak, crowns, rivals) is built only on the first --
-    a second course starts a learner exactly where a real new course would:
-    with content to learn and no manufactured history.
+    Deliberately everything in `seed()` that is *not* learner data: adding a
+    course, or editing existing content, only ever upserts on natural keys --
+    unlike the demo learner and rivals below, nothing here deletes and rebuilds
+    anything, so it is always safe to re-run against a database with real
+    progress in it. That split is what lets ``main()`` keep a course catalogue
+    current on every deploy while still refusing to reset learner state on a
+    free-tier cold start -- see its docstring.
     """
     primary_course: Course | None = None
     for course_spec in content.COURSES:
@@ -329,6 +332,18 @@ def seed(db: Session) -> None:
     assert primary_course is not None
     _upsert_achievements(db)
     db.flush()
+    return primary_course
+
+
+def seed(db: Session) -> None:
+    """Run every seeding step in dependency order.
+
+    Every course in ``content.COURSES`` gets its content upserted, but the demo
+    learner's narrative (streak, crowns, rivals) is built only on the first --
+    a second course starts a learner exactly where a real new course would:
+    with content to learn and no manufactured history.
+    """
+    primary_course = _sync_content(db)
     _seed_demo_learner(db, primary_course)
     _seed_rivals(db, primary_course)
     db.commit()
@@ -342,18 +357,29 @@ def is_seeded(db: Session) -> bool:
 def main() -> None:
     """Entry point for ``python -m app.seed.seed_data``.
 
-    ``--if-empty`` seeds only a database that has no course yet. Deployed
-    environments use it in their start command: a free-tier host restarts the
-    process whenever it wakes from idle, and an unconditional seed would reset
-    every learner's progress on each cold start. Locally the default (no flag)
-    still converges the demo learners back to a known state, which is what makes
-    re-running it useful during development.
+    ``--if-empty`` skips *learner* seeding on a database that already has one
+    -- deployed environments use it in their start command, since a free-tier
+    host restarts the process whenever it wakes from idle, and unconditionally
+    rebuilding the demo learner and rivals would reset every learner's real
+    progress on each cold start. Locally the default (no flag) still converges
+    them back to a known state, which is what makes re-running it useful
+    during development.
+
+    Course *content* is a different question and is always synced, flag or
+    not: it only ever upserts on natural keys (see ``_sync_content``), so it
+    is exactly as safe to run against a database with real progress in it as
+    against an empty one, and it is the only thing that makes adding a course
+    to `content.py` actually reach a deployment that was seeded before that
+    course existed -- otherwise ``--if-empty`` would silently skip it forever
+    once the database had anything in it at all.
     """
     seed_only_if_empty = "--if-empty" in sys.argv
 
     with SessionLocal() as db:
         if seed_only_if_empty and is_seeded(db):
-            print("Database already seeded; leaving learner progress untouched.")
+            _sync_content(db)
+            db.commit()
+            print("Database already seeded; synced course content, left learner progress untouched.")
             return
         seed(db)
         courses = db.scalars(select(Course)).all()

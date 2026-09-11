@@ -51,6 +51,20 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.head("/health", tags=["meta"], include_in_schema=False)
+def health_head() -> dict[str, str]:
+    """Same probe, answering HEAD.
+
+    Render's own health check and this project's uptime pinger both use
+    plain GET, but several third-party uptime monitors default to HEAD to
+    save bandwidth. Without this, those get a 405 and report the service as
+    *down* while it is actually healthy -- the opposite of what a liveness
+    probe is for. Excluded from the schema since GET already documents this
+    endpoint's one contract; a HEAD entry would only be a duplicate.
+    """
+    return {"status": "ok"}
+
+
 app.include_router(course.router, prefix=settings.api_v1_prefix)
 app.include_router(lessons.router, prefix=settings.api_v1_prefix)
 app.include_router(users.router, prefix=settings.api_v1_prefix)

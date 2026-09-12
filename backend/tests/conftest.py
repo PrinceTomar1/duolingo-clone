@@ -11,7 +11,7 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.core import clock
+from app.core import clock, rate_limit
 from app.core.database import Base
 from app.models.achievement import Achievement
 from app.models.course import Course, Skill, Unit
@@ -32,6 +32,18 @@ def real_time() -> None:
     clock.reset()
     yield
     clock.reset()
+
+
+@pytest.fixture(autouse=True)
+def no_rate_limit_history() -> None:
+    """Reset the login rate limiter around every test.
+
+    It is process-global by design (see its module docstring), so a test that
+    trips it must not leave the next test's identical username locked out.
+    """
+    rate_limit.reset_all()
+    yield
+    rate_limit.reset_all()
 
 
 @pytest.fixture

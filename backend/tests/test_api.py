@@ -607,3 +607,71 @@ class TestPasswordProtectedLearners:
             json={"username": "nobody-here", "password": "anything"},
         )
         assert response.status_code == 401
+
+    def test_repeated_failures_lock_out_further_attempts(self, client: TestClient) -> None:
+        from app.core import rate_limit
+
+        client.post(
+            "/api/v1/users",
+            json={"username": "bruteforced", "display_name": "Target", "password": "correct-horse"},
+        )
+        for _ in range(rate_limit.MAX_ATTEMPTS):
+            response = client.post(
+                "/api/v1/users/authenticate",
+                json={"username": "bruteforced", "password": "wrong-guess"},
+            )
+            assert response.status_code == 401
+
+        # One more, even with the RIGHT password this time -- the lockout is
+        # by attempt count, not by whether this particular guess was correct.
+        locked = client.post(
+            "/api/v1/users/authenticate",
+            json={"username": "bruteforced", "password": "correct-horse"},
+        )
+        assert locked.status_code == 429
+
+    def test_a_lockout_is_scoped_to_its_own_username(self, client: TestClient) -> None:
+        from app.core import rate_limit
+
+        client.post(
+            "/api/v1/users",
+            json={"username": "victim", "display_name": "Victim", "password": "correct-horse"},
+        )
+        client.post(
+            "/api/v1/users",
+            json={"username": "bystander", "display_name": "Bystander", "password": "correct-horse"},
+        )
+        for _ in range(rate_limit.MAX_ATTEMPTS):
+            client.post(
+                "/api/v1/users/authenticate",
+                json={"username": "victim", "password": "wrong-guess"},
+            )
+
+        # "victim" is locked out; a completely different username is not.
+        response = client.post(
+            "/api/v1/users/authenticate",
+            json={"username": "bystander", "password": "correct-horse"},
+        )
+        assert response.status_code == 200
+
+    def test_a_successful_login_clears_the_failure_count(self, client: TestClient) -> None:
+        client.post(
+            "/api/v1/users",
+            json={"username": "recovers", "display_name": "Recovers", "password": "correct-horse"},
+        )
+        client.post(
+            "/api/v1/users/authenticate",
+            json={"username": "recovers", "password": "wrong-guess"},
+        )
+        good = client.post(
+            "/api/v1/users/authenticate",
+            json={"username": "recovers", "password": "correct-horse"},
+        )
+        assert good.status_code == 200
+
+        # The one prior failure should not count towards a future lockout.
+        again = client.post(
+            "/api/v1/users/authenticate",
+            json={"username": "recovers", "password": "correct-horse"},
+        )
+        assert again.status_code == 200

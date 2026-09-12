@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core import clock
+from app.core import clock, rate_limit
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import hash_password, verify_password
@@ -24,7 +24,12 @@ from app.schemas.user import (
     UserStatsRead,
 )
 from app.services import gamification_service, lesson_service
-from app.services.exceptions import ConflictError, NotFoundError, UnauthorizedError
+from app.services.exceptions import (
+    ConflictError,
+    NotFoundError,
+    TooManyAttemptsError,
+    UnauthorizedError,
+)
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -112,13 +117,25 @@ def authenticate_user(body: UserAuthenticate, db: Session = Depends(get_db)) -> 
     always was; this exists only for the learners that opted into a password
     at creation. Wrong username and wrong password both answer 401, not 404 vs
     401, so a caller cannot use this endpoint to discover which usernames exist.
+
+    Rate-limited per username (see ``core.rate_limit``): this is the one
+    endpoint in the app that checks a secret against a stored value, which
+    makes it the one endpoint worth protecting from being hammered.
     """
     username = body.username.strip().lower()
+    if rate_limit.is_locked_out(username):
+        raise TooManyAttemptsError(
+            "Too many attempts for this learner. Wait a few minutes and try again."
+        )
+
     user = db.scalar(select(User).where(User.username == username))
     if user is None or user.password_hash is None or not verify_password(
         body.password, user.password_hash
     ):
+        rate_limit.register_failure(username)
         raise UnauthorizedError("Incorrect username or password.")
+
+    rate_limit.clear(username)
     return user
 
 

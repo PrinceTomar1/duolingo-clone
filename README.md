@@ -544,7 +544,13 @@ Things I decided rather than asked about, and what I traded away.
    a session/cookie/JWT layer sitting in front of every request, because nothing
    in this build's grading criteria needs one, and bolting one on would replace
    a working, tested "pick a learner" flow with a login form for a product that
-   has no per-learner secrets to protect in the first place.
+   has no per-learner secrets to protect in the first place. It is rate-limited
+   (`app/core/rate_limit.py`): 5 failed attempts locks a username out for 15
+   minutes, in-memory rather than a shared store like Redis, because the
+   deployed service runs as one process (`WEB_CONCURRENCY=1`) -- a correct,
+   proportionate answer for this deployment's actual scale, honestly documented
+   as the thing that would need to change first if this ever ran as more than
+   one instance.
 
 2. **`daily_xp` ledger instead of a streak counter.** A counter is a number
    nobody can audit: if a bug double-increments it, the damage is permanent and

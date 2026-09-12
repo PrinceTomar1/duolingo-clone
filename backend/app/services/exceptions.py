@@ -35,6 +35,12 @@ class UnauthorizedError(DomainError):
     status_code = 401
 
 
+class TooManyAttemptsError(DomainError):
+    """Too many failed logins for one username in the current window."""
+
+    status_code = 429
+
+
 class SkillLockedError(DomainError):
     """The learner has not unlocked the skill this lesson belongs to."""
 

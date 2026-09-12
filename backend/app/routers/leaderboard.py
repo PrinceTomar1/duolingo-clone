@@ -77,6 +77,7 @@ def read_leaderboard(
                 weekly_xp=int(weekly),
                 total_xp=stats.total_xp,
                 current_streak=stats.current_streak,
+                has_password=user.has_password,
             )
             for rank, (user, stats, weekly) in enumerate(rows, start=1)
         ],

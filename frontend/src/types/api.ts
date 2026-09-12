@@ -160,6 +160,8 @@ export interface User {
   username: string;
   display_name: string;
   avatar_color: string;
+  /** Whether switching into this learner needs a password prompt. Never the hash itself. */
+  has_password: boolean;
   created_at: string;
 }
 
@@ -214,6 +216,7 @@ export interface LeaderboardEntry {
   weekly_xp: number;
   total_xp: number;
   current_streak: number;
+  has_password: boolean;
 }
 
 export interface Leaderboard {

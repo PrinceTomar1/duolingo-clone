@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.core import clock
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.security import hash_password, verify_password
 from app.models.achievement import Achievement, UserAchievement
 from app.models.progress import LessonAttempt, UserProgress
 from app.models.stats import DailyXp, UserStats
@@ -16,13 +17,14 @@ from app.models.user import User
 from app.schemas.user import (
     AchievementRead,
     DailyXpRead,
+    UserAuthenticate,
     UserCreate,
     UserProfileRead,
     UserRead,
     UserStatsRead,
 )
 from app.services import gamification_service, lesson_service
-from app.services.exceptions import ConflictError, NotFoundError
+from app.services.exceptions import ConflictError, NotFoundError, UnauthorizedError
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -68,17 +70,23 @@ def read_user_by_username(username: str, db: Session = Depends(get_db)) -> User:
 def create_user(body: UserCreate, db: Session = Depends(get_db)) -> User:
     """Add a new learner: "Switch learner" -> "Add a new learner" asks for this.
 
-    A real signup form's entire job in a build with no auth: pick a name, get
-    a fresh account. The new learner starts exactly where the seeded ones did
-    on day one -- a full heart bar, no XP, no streak, no gems (Duolingo does
-    not hand out currency at signup either) -- because inventing more would
-    misrepresent what a brand new account actually has.
+    A real signup form's entire job in a build with no required auth: pick a
+    name, get a fresh account. The new learner starts exactly where the seeded
+    ones did on day one -- a full heart bar, no XP, no streak, no gems (Duolingo
+    does not hand out currency at signup either) -- because inventing more
+    would misrepresent what a brand new account actually has. A password is
+    optional (see ``UserCreate``); when set, it is hashed here and never
+    handled anywhere else in plaintext.
     """
     username = body.username.strip().lower()
     if db.scalar(select(User).where(User.username == username)) is not None:
         raise ConflictError("That username is already taken.")
 
-    user = User(username=username, display_name=body.display_name.strip())
+    user = User(
+        username=username,
+        display_name=body.display_name.strip(),
+        password_hash=hash_password(body.password) if body.password else None,
+    )
     db.add(user)
     db.flush()  # Assigns user.id before UserStats references it.
     db.add(
@@ -91,6 +99,26 @@ def create_user(body: UserCreate, db: Session = Depends(get_db)) -> User:
     )
     db.commit()
     db.refresh(user)
+    return user
+
+
+@router.post("/authenticate", response_model=UserRead)
+def authenticate_user(body: UserAuthenticate, db: Session = Depends(get_db)) -> User:
+    """Switch into a password-protected learner.
+
+    The only endpoint in the app that takes a password. A passwordless
+    (seeded, or created-without-one) learner is never reachable through here
+    on purpose -- switching into those stays the instant, no-password flow it
+    always was; this exists only for the learners that opted into a password
+    at creation. Wrong username and wrong password both answer 401, not 404 vs
+    401, so a caller cannot use this endpoint to discover which usernames exist.
+    """
+    username = body.username.strip().lower()
+    user = db.scalar(select(User).where(User.username == username))
+    if user is None or user.password_hash is None or not verify_password(
+        body.password, user.password_hash
+    ):
+        raise UnauthorizedError("Incorrect username or password.")
     return user
 
 

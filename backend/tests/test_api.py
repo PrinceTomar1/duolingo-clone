@@ -482,6 +482,7 @@ class TestCreateUser:
         body = response.json()
         assert body["username"] == "newkid"
         assert body["display_name"] == "New Kid"
+        assert body["has_password"] is False
 
         stats = client.get(f"/api/v1/users/{body['id']}/stats").json()
         assert stats["total_xp"] == 0
@@ -523,3 +524,86 @@ class TestCreateUser:
             f"/api/v1/lessons/{lesson_id}/start", json={"user_id": new_user["id"]}
         )
         assert response.status_code == 201
+
+
+class TestPasswordProtectedLearners:
+    """POST /users with a password, and POST /users/authenticate to switch into one."""
+
+    def test_a_learner_created_without_a_password_is_unprotected(
+        self, client: TestClient
+    ) -> None:
+        body = client.post(
+            "/api/v1/users", json={"username": "opendoor", "display_name": "Open Door"}
+        ).json()
+        assert body["has_password"] is False
+
+    def test_a_learner_created_with_a_password_reports_it_and_never_exposes_it(
+        self, client: TestClient
+    ) -> None:
+        response = client.post(
+            "/api/v1/users",
+            json={"username": "guarded", "display_name": "Guarded", "password": "correct-horse"},
+        )
+        assert response.status_code == 201
+        body = response.json()
+        assert body["has_password"] is True
+        assert "password" not in body
+        assert "password_hash" not in body
+
+        # The lookup a fresh page load uses also reports it, so the switcher
+        # knows to prompt before the learner is ever fetched by username again.
+        looked_up = client.get("/api/v1/users/by-username/guarded").json()
+        assert looked_up["has_password"] is True
+
+    def test_short_passwords_are_rejected(self, client: TestClient) -> None:
+        response = client.post(
+            "/api/v1/users",
+            json={"username": "tooshort", "display_name": "Too Short", "password": "abc123"},
+        )
+        assert response.status_code == 422
+
+    def test_authenticate_succeeds_with_the_right_password(self, client: TestClient) -> None:
+        client.post(
+            "/api/v1/users",
+            json={"username": "vault", "display_name": "Vault", "password": "correct-horse"},
+        )
+        response = client.post(
+            "/api/v1/users/authenticate",
+            json={"username": "vault", "password": "correct-horse"},
+        )
+        assert response.status_code == 200
+        assert response.json()["username"] == "vault"
+
+    def test_authenticate_rejects_the_wrong_password(self, client: TestClient) -> None:
+        client.post(
+            "/api/v1/users",
+            json={"username": "vault2", "display_name": "Vault Two", "password": "correct-horse"},
+        )
+        response = client.post(
+            "/api/v1/users/authenticate",
+            json={"username": "vault2", "password": "wrong-guess"},
+        )
+        assert response.status_code == 401
+
+    def test_authenticate_rejects_a_passwordless_learner(
+        self, client: TestClient, user: User
+    ) -> None:
+        # A seeded/passwordless account cannot be switched into through the
+        # password endpoint at all, with any password -- it is not the door
+        # for those accounts, instant switching still is.
+        response = client.post(
+            "/api/v1/users/authenticate",
+            json={"username": user.username, "password": "anything"},
+        )
+        assert response.status_code == 401
+
+    def test_authenticate_rejects_an_unknown_username_the_same_way(
+        self, client: TestClient
+    ) -> None:
+        # Same status for "wrong password" and "no such learner" -- this
+        # endpoint must not let a caller enumerate which usernames exist.
+        response = client.post(
+            "/api/v1/users/authenticate",
+            json={"username": "nobody-here", "password": "anything"},
+        )
+        assert response.status_code == 401

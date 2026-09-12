@@ -8,27 +8,43 @@ from app.schemas.common import ORMModel
 
 
 class UserRead(ORMModel):
-    """Public identity of a learner."""
+    """Public identity of a learner.
+
+    ``has_password`` -- never the hash itself -- is what the switcher uses to
+    decide whether picking this learner needs a password prompt or can switch
+    instantly, the same way it always has for the passwordless seeded accounts.
+    """
 
     id: int
     username: str
     display_name: str
     avatar_color: str
+    has_password: bool
     created_at: datetime
 
 
 class UserCreate(BaseModel):
     """What "Add a new learner" actually asks for.
 
-    Deliberately just the two fields a name badge needs -- there is no
-    password because there is no auth in this build (see the README), so
-    asking for one would be theatre. Length limits mirror the ``users`` table
-    columns so a request that would fail the database constraint fails
-    validation first, with a message naming the field.
+    ``password`` is optional: there is no required auth in this build (the
+    assignment explicitly accepts simplified auth), so a blank password keeps
+    the account exactly as instant-switchable as every seeded one. Set one and
+    the account is real in the one sense that matters -- nobody switches into
+    it without knowing it. Length limits mirror the ``users`` table columns so
+    a request that would fail the database constraint fails validation first,
+    with a message naming the field.
     """
 
     username: str = Field(min_length=2, max_length=50, pattern=r"^[a-zA-Z0-9_]+$")
     display_name: str = Field(min_length=1, max_length=100)
+    password: str | None = Field(default=None, min_length=8, max_length=100)
+
+
+class UserAuthenticate(BaseModel):
+    """What switching into a password-protected learner asks for."""
+
+    username: str
+    password: str
 
 
 class UserStatsRead(BaseModel):

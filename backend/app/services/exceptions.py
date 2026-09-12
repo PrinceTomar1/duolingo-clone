@@ -29,6 +29,12 @@ class ConflictError(DomainError):
     status_code = 409
 
 
+class UnauthorizedError(DomainError):
+    """A password-protected learner was named with the wrong password, or none."""
+
+    status_code = 401
+
+
 class SkillLockedError(DomainError):
     """The learner has not unlocked the skill this lesson belongs to."""
 

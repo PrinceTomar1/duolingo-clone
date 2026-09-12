@@ -54,19 +54,55 @@ interface SessionState {
    * no chance to say who a new learner actually is. This asks the server to
    * create a real row, then loads it the same way any other learner loads.
    * Left to the caller to catch -- a taken username is a 409 the form should
-   * show inline, not a session-wide error banner.
+   * show inline, not a session-wide error banner. `password` is optional: a
+   * blank one keeps the new account exactly as instant-switchable as every
+   * seeded one.
    */
-  createLearner: (username: string, displayName: string) => Promise<void>;
+  createLearner: (username: string, displayName: string, password?: string) => Promise<void>;
+  /**
+   * Switch into a password-protected learner.
+   *
+   * `switchTo` stays the instant, no-password path every seeded account uses;
+   * this is the only path that asks the server to verify a password, and only
+   * ever for a learner that opted into one. Left to the caller to catch -- a
+   * wrong password is a 401 the form should show inline, not a session-wide
+   * error banner.
+   */
+  switchWithPassword: (username: string, password: string) => Promise<void>;
   /** Re-read stats from the server after something changed them. */
   refreshStats: () => Promise<void>;
   /** Replace stats with a payload the server already returned. */
   applyStats: (stats: UserStats) => void;
 }
 
+function rememberActiveUsername(username: string): void {
+  try {
+    window.localStorage.setItem(ACTIVE_USERNAME_KEY, username);
+  } catch {
+    // A private-browsing tab that refuses storage still gets the switch for
+    // this load; it just will not stick past a refresh.
+  }
+}
+
 async function loadUser(username: string, set: (partial: Partial<SessionState>) => void) {
   set({ isLoading: true, error: null });
   try {
     const user = await api.userByUsername(username);
+    const stats = await api.stats(user.id);
+    set({ user, stats, isLoading: false });
+  } catch (error) {
+    set({
+      isLoading: false,
+      error: error instanceof Error ? error.message : "Could not reach the API",
+    });
+  }
+}
+
+/** Load stats for a `User` object already resolved (created or authenticated), skipping the redundant username lookup `loadUser` would otherwise make. */
+async function settleAsUser(user: User, set: (partial: Partial<SessionState>) => void) {
+  rememberActiveUsername(user.username);
+  set({ isLoading: true, error: null });
+  try {
     const stats = await api.stats(user.id);
     set({ user, stats, isLoading: false });
   } catch (error) {
@@ -90,24 +126,18 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   switchTo: async (username) => {
-    try {
-      window.localStorage.setItem(ACTIVE_USERNAME_KEY, username);
-    } catch {
-      // A private-browsing tab that refuses storage still gets the switch for
-      // this load; it just will not stick past a refresh.
-    }
+    rememberActiveUsername(username);
     await loadUser(username, set);
   },
 
-  createLearner: async (username, displayName) => {
-    const user = await api.createUser(username, displayName);
-    try {
-      window.localStorage.setItem(ACTIVE_USERNAME_KEY, user.username);
-    } catch {
-      // Same private-browsing caveat as switchTo: the switch still applies to
-      // this load, it just will not survive a refresh.
-    }
-    await loadUser(user.username, set);
+  createLearner: async (username, displayName, password) => {
+    const user = await api.createUser(username, displayName, password);
+    await settleAsUser(user, set);
+  },
+
+  switchWithPassword: async (username, password) => {
+    const user = await api.authenticate(username, password);
+    await settleAsUser(user, set);
   },
 
   refreshStats: async () => {

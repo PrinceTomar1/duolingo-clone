@@ -157,10 +157,16 @@ export const api = {
 
   userByUsername: (username: string) => request<User>(`/users/by-username/${username}`),
 
-  createUser: (username: string, displayName: string) =>
+  createUser: (username: string, displayName: string, password?: string) =>
     request<User>("/users", {
       method: "POST",
-      body: { username, display_name: displayName },
+      body: { username, display_name: displayName, password: password || undefined },
+    }),
+
+  authenticate: (username: string, password: string) =>
+    request<User>("/users/authenticate", {
+      method: "POST",
+      body: { username, password },
     }),
 
   stats: (userId: number) => request<UserStats>(`/users/${userId}/stats`),

@@ -16,6 +16,7 @@ class LeaderboardEntry(BaseModel):
     weekly_xp: int
     total_xp: int
     current_streak: int
+    has_password: bool
 
 
 class LeaderboardRead(BaseModel):

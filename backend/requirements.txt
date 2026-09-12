@@ -8,3 +8,4 @@ python-dotenv==1.2.3
 httpx==0.28.1
 pytest==9.1.1
 psycopg2-binary==2.9.10
+bcrypt==5.0.0
